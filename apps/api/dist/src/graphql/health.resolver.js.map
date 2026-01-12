@@ -1,0 +1,1 @@
+{"version":3,"file":"health.resolver.js","sourceRoot":"","sources":["../../../src/graphql/health.resolver.ts"],"names":[],"mappings":";;;;;;;;;;;;AAAA,6CAAkD;AAG3C,IAAM,cAAc,GAApB,MAAM,cAAc;IAEzB,MAAM;QACJ,OAAO,IAAI,CAAC;IACd,CAAC;CACF,CAAA;AALY,wCAAc;AAEzB;IADC,IAAA,eAAK,EAAC,GAAG,EAAE,CAAC,MAAM,CAAC;;;;4CAGnB;yBAJU,cAAc;IAD1B,IAAA,kBAAQ,GAAE;GACE,cAAc,CAK1B"}

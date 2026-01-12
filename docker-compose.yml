@@ -1,0 +1,18 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: easystream-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: easystream
+      POSTGRES_PASSWORD: easystream
+      POSTGRES_DB: easystream
+    ports:
+      - "5433:5432"
+    volumes:
+      - easystream_pgdata:/var/lib/postgresql/data
+
+volumes:
+  easystream_pgdata:
+
+

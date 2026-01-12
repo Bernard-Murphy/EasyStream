@@ -1,0 +1,102 @@
+# ------------------------------------------------------
+# THIS FILE WAS AUTOMATICALLY GENERATED (DO NOT MODIFY)
+# ------------------------------------------------------
+
+type AuthPayload {
+  token: String!
+}
+
+type ChatMessage {
+  anon_background_color: String!
+  anon_id: String!
+  anon_text_color: String!
+  create_date: DateTime!
+  id: Int!
+  message: String!
+  name: String
+  removed: Boolean!
+  stream_id: Int!
+  uuid: ID!
+}
+
+type ChatMessageAddedPayload {
+  message: ChatMessage!
+  streamUuid: String!
+}
+
+"""
+A date-time string at UTC, such as 2019-12-03T09:54:33Z, compliant with the date-time format.
+"""
+scalar DateTime
+
+type HierarchyUpdate {
+  positions: [StreamPosition!]!
+  streamUuid: String!
+}
+
+type Mutation {
+  createStream(anon_background_color: String, anon_id: String, anon_text_color: String, description: String!, thumbnailUrl: String, title: String!): Stream!
+  endStream(uuid: String!): Stream!
+  joinStream(peerId: String!, uuid: String!): Boolean!
+  leaveStream(peerId: String!, uuid: String!): Boolean!
+  login(password: String!, username: String!): AuthPayload!
+  markPast(fileUrls: [String!]!, uuid: String!): Stream!
+  sendChatMessage(anon_background_color: String, anon_id: String, anon_text_color: String, message: String!, name: String, streamUuid: String!): ChatMessage!
+  sendSignal(fromPeerId: String!, payload: String!, streamUuid: String!, toPeerId: String!): Boolean!
+  setStreamThumbnail(thumbnailUrl: String, uuid: String!): Stream!
+}
+
+type Query {
+  chatMessages(streamUuid: String!): [ChatMessage!]!
+  health: String!
+  liveStreams(search: String, sort: String): [Stream!]!
+  pastStreams(search: String): [Stream!]!
+  stream(uuid: String!): Stream!
+  streamPositions(uuid: String!): [StreamPosition!]!
+}
+
+type SignalMessage {
+  createdAt: DateTime!
+  fromPeerId: String!
+  payload: String!
+  streamUuid: String!
+  toPeerId: String!
+}
+
+type Stream {
+  anon_background_color: String!
+  anon_id: String!
+  anon_text_color: String!
+  description: String!
+  end_time: DateTime
+  fileUrls: [String!]!
+  id: Int!
+  removed: Boolean!
+  start_time: DateTime!
+  status: StreamStatus!
+  thumbnailUrl: String
+  title: String!
+  uuid: ID!
+}
+
+type StreamPosition {
+  children: [String!]!
+  id: Int!
+  parents: [String!]!
+  peer_id: String!
+  stage: Int!
+  stream_id: Int!
+}
+
+enum StreamStatus {
+  live
+  past
+  processing
+}
+
+type Subscription {
+  chatMessageAdded(streamUuid: String!): ChatMessageAddedPayload!
+  hierarchyUpdated(uuid: String!): HierarchyUpdate!
+  signalReceived(peerId: String!, streamUuid: String!): SignalMessage!
+  streamUpdated(uuid: String!): Stream!
+}

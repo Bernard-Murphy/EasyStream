@@ -1,0 +1,77 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum StreamStatus {
+  live
+  processing
+  past
+}
+
+model Stream {
+  id                   Int          @id @default(autoincrement())
+  uuid                 String       @unique
+  start_time           DateTime
+  end_time             DateTime?
+  anon_id              String
+  anon_text_color      String
+  anon_background_color String
+  title                String
+  description          String
+  status               StreamStatus
+  removed              Boolean      @default(false)
+  fileUrls             String[]
+  thumbnailUrl          String?
+
+  positions            StreamPosition[]
+  chatMessages         ChatMessage[]
+}
+
+model StreamPosition {
+  id        Int      @id @default(autoincrement())
+  stream_id Int
+  stage     Int // Streamer will be stage 0
+  peer_id   String
+  parents   String[]
+  children  String[]
+
+  stream Stream @relation(fields: [stream_id], references: [id], onDelete: Cascade)
+
+  @@unique([stream_id, peer_id])
+  @@index([stream_id, stage])
+}
+
+model ChatMessage {
+  id                    Int      @id @default(autoincrement())
+  uuid                  String   @unique
+  create_date           DateTime @default(now())
+  anon_id               String
+  anon_text_color       String
+  anon_background_color String
+  name                  String?
+  message               String
+  removed               Boolean  @default(false)
+  stream_id             Int
+
+  stream Stream @relation(fields: [stream_id], references: [id], onDelete: Cascade)
+
+  @@index([stream_id, create_date])
+}
+
+model User {
+  id            Int      @id @default(autoincrement())
+  username      String   @unique
+  email         String   @unique
+  create_date   DateTime @default(now())
+  password_hash String
+}
