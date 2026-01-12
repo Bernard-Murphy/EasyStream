@@ -1,35 +1,149 @@
-'use client';
+"use client";
 
-import Link from 'next/link';
-import { usePathname, useSearchParams } from 'next/navigation';
-import { getToken, clearToken } from '@/lib/auth';
-import { useEffect, useState } from 'react';
+import Link from "next/link";
+import { usePathname, useSearchParams } from "next/navigation";
+import { getToken, clearToken } from "@/lib/auth";
+import { useEffect, useState } from "react";
+import BouncyClick from "@/components/ui/bouncy-click";
+import { motion, AnimatePresence } from "framer-motion";
+import {
+  retract,
+  normalize,
+  transition_fast,
+  transition,
+  fade_out,
+} from "@/lib/transitions";
+import { Button } from "@/components/ui/button";
+import { Menu } from "lucide-react";
 
-function NavLink({ href, label }: { href: string; label: string }) {
+function NavLink({
+  href,
+  label,
+  isMobile,
+}: {
+  href: string;
+  label: string;
+  isMobile?: boolean;
+}) {
   const pathname = usePathname();
   const active = pathname === href;
   return (
-    <Link
-      className={`text-sm font-medium ${
-        active ? 'text-slate-900' : 'text-slate-600 hover:text-slate-900'
-      }`}
-      href={href}
-    >
-      {label}
-    </Link>
+    <BouncyClick>
+      <Button
+        className={`${isMobile ? "w-full justify-start" : ""}`}
+        asChild
+        variant="ghost"
+      >
+        <Link href={href} className="hover:text-blue-">
+          {label}
+        </Link>
+      </Button>
+    </BouncyClick>
   );
 }
 
 export function Navbar() {
   const searchParams = useSearchParams();
   const [loggedIn, setLoggedIn] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   useEffect(() => {
     setLoggedIn(!!getToken());
   }, [searchParams]);
 
   return (
-    <div className="sticky top-0 z-50 border-b bg-white/90 backdrop-blur">
+    <nav className="border-b bg-background">
+      <div className="container mx-auto px-4">
+        <div className="flex h-16 items-center justify-between">
+          {/* Desktop Navigation */}
+          <div className="hidden md:flex items-center space-x-6">
+            <BouncyClick noRipple>
+              <Link href="/" className="text-xl font-bold">
+                EasyStream
+              </Link>
+            </BouncyClick>
+            <NavLink href="/browse-live" label="Live Now" />
+            <NavLink href="/browse-past" label="Past Streams" />
+          </div>
+
+          {/* Mobile Navigation */}
+          <div className="md:hidden flex items-center space-x-4">
+            <BouncyClick noRipple>
+              <Link href="/" className="text-xl font-bold">
+                EasyStream
+              </Link>
+            </BouncyClick>
+          </div>
+
+          {/* Right side - Login/User Avatar (unchanged) */}
+          <div className="flex items-center space-x-4">
+            {/* Mobile Menu Button */}
+            <div className="md:hidden">
+              <BouncyClick>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                >
+                  <Menu className="h-5 w-5" />
+                </Button>
+              </BouncyClick>
+            </div>
+
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={String(loggedIn)}
+                initial={fade_out}
+                animate={normalize}
+                exit={fade_out}
+                transition={transition}
+              >
+                <BouncyClick>
+                  {loggedIn && (
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={() => {
+                        clearToken();
+                        setLoggedIn(false);
+                      }}
+                    >
+                      Logout
+                    </Button>
+                  )}
+                </BouncyClick>
+              </motion.div>
+            </AnimatePresence>
+          </div>
+        </div>
+        <AnimatePresence mode="wait">
+          {/* Mobile Menu */}
+          {mobileMenuOpen && (
+            <motion.div
+              initial={retract}
+              animate={{
+                ...normalize,
+                height: "auto",
+              }}
+              exit={retract}
+              transition={transition_fast}
+              className="md:hidden border-t bg-background overflow-hidden"
+              key={mobileMenuOpen ? "open" : "closed"}
+            >
+              <div className="px-4 py-2 space-y-1">
+                <NavLink href="/browse-live" label="Live Now" isMobile />
+                <NavLink href="/browse-past" label="Past Streams" isMobile />
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+    </nav>
+  );
+}
+
+{
+  /* <div className="sticky top-0 z-50 border-b bg-white/90 backdrop-blur">
       <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
         <Link href="/" className="text-lg font-semibold tracking-tight">
           EasyStream
@@ -38,27 +152,22 @@ export function Navbar() {
           <NavLink href="/browse-live" label="Live Now" />
           <NavLink href="/browse-past" label="Past Streams" />
           {loggedIn ? (
-            <button
-              className="rounded-md border px-3 py-1.5 text-sm hover:bg-slate-50"
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={() => {
                 clearToken();
                 setLoggedIn(false);
               }}
             >
               Logout
-            </button>
+            </Button>
           ) : (
-            <Link
-              className="rounded-md border px-3 py-1.5 text-sm hover:bg-slate-50"
-              href="/?login=true"
-            >
-              Moderator Login
-            </Link>
+            <Button asChild variant="ghost" size="sm">
+              <Link href="/?login=true">Moderator Login</Link>
+            </Button>
           )}
         </div>
       </div>
-    </div>
-  );
+    </div> */
 }
-
-

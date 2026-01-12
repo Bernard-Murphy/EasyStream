@@ -11,6 +11,7 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
+    "preseed": "npm run prisma:generate",
     "seed": "ts-node -T src/scripts/seed.ts",
     "start": "nest start",
     "start:dev": "nest start --watch",

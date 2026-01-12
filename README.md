@@ -22,7 +22,6 @@ Monorepo:
 ### One-time setup
 
 ```bash
-cd /home/bernard/Documents/EasyStream
 
 # 1) install deps
 npm install
@@ -40,26 +39,22 @@ DATABASE_URL='postgresql://easystream:easystream@localhost:5433/easystream?schem
 Option A (recommended: separate terminals):
 
 ```bash
-cd /home/bernard/Documents/EasyStream
 API_PORT=4000 JWT_SECRET=dev_only_change_me DATABASE_URL='postgresql://easystream:easystream@localhost:5433/easystream?schema=public' npm --workspace apps/api run start:dev
 ```
 
 ```bash
-cd /home/bernard/Documents/EasyStream
 npm --workspace apps/web run dev -- --port 3000
 ```
 
 Option B (single command, runs both workspaces in parallel):
 
 ```bash
-cd /home/bernard/Documents/EasyStream
 npm run dev
 ```
 
 ### Build + run in prod
 
 ```bash
-cd /home/bernard/Documents/EasyStream
 
 # Build all
 npm run build
@@ -76,14 +71,12 @@ npm --workspace apps/web run start -- --port 3000
 Start Postgres (mapped to host **5433**):
 
 ```bash
-cd /home/bernard/Documents/EasyStream
 docker compose up -d postgres
 ```
 
 Run migrations + seed moderator:
 
 ```bash
-cd /home/bernard/Documents/EasyStream
 DATABASE_URL='postgresql://easystream:easystream@localhost:5433/easystream?schema=public' npm --workspace apps/api run prisma:migrate
 DATABASE_URL='postgresql://easystream:easystream@localhost:5433/easystream?schema=public' MOD_USERNAME=admin MOD_PASSWORD=change_me npm --workspace apps/api run seed
 ```
@@ -91,7 +84,6 @@ DATABASE_URL='postgresql://easystream:easystream@localhost:5433/easystream?schem
 Start API + Web:
 
 ```bash
-cd /home/bernard/Documents/EasyStream
 API_PORT=4000 JWT_SECRET=dev_only_change_me DATABASE_URL='postgresql://easystream:easystream@localhost:5433/easystream?schema=public' npm --workspace apps/api run start:dev
 npm --workspace apps/web run dev -- --port 3000
 ```
