@@ -1,4 +1,3 @@
-import { LoginModal } from "@/components/LoginModal";
 import { HomeStartStreaming } from "@/components/home/HomeStartStreaming";
 
 export default function Home() {
@@ -14,8 +13,6 @@ export default function Home() {
       <div className="mt-8 flex justify-center">
         <HomeStartStreaming />
       </div>
-
-      <LoginModal />
     </div>
   );
 }

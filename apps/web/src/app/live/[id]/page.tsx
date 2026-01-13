@@ -27,6 +27,13 @@ type ChatMessage = {
   message: string;
 };
 
+type StreamPosition = {
+  stage: number;
+  peer_id: string;
+  parents: string[];
+  children: string[];
+};
+
 export default function LiveStreamPage() {
   const params = useParams<{ id: string }>();
   const uuid = params.id;
@@ -37,6 +44,7 @@ export default function LiveStreamPage() {
   const [chatText, setChatText] = useState("");
   const [name, setName] = useState("");
   const [rtcError, setRtcError] = useState<string | null>(null);
+  const [positions, setPositions] = useState<StreamPosition[]>([]);
 
   const isHost = useMemo(() => {
     if (typeof window === "undefined") return false;
@@ -51,11 +59,27 @@ export default function LiveStreamPage() {
   const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
   const pcByPeerRef = useRef(new Map<string, RTCPeerConnection>());
+  const pcRoleByPeerRef = useRef(new Map<string, "sender" | "receiver">());
+  const senderTracksByPeerRef = useRef(new Map<string, RTCRtpSender[]>());
+  const upstreamStreamsByPeerRef = useRef(new Map<string, MediaStream>());
+  const activeUpstreamPeerRef = useRef<string | null>(null);
+  const relaySourceStreamRef = useRef<MediaStream | null>(null);
+
   const recorderRef = useRef<MediaRecorder | null>(null);
   const clipBufferRef = useRef<{ blobs: Blob[]; bytes: number }>({
     blobs: [],
     bytes: 0,
   });
+  const uploadQueueRef = useRef<Promise<void>>(Promise.resolve());
+
+  const myPosition = useMemo(() => {
+    return positions.find((p) => p.peer_id === peerId) ?? null;
+  }, [peerId, positions]);
+
+  function queueUpload(fn: () => Promise<void>) {
+    uploadQueueRef.current = uploadQueueRef.current.then(fn).catch(() => {});
+    return uploadQueueRef.current;
+  }
 
   useEffect(() => {
     const client = makeGqlClient();
@@ -70,6 +94,14 @@ export default function LiveStreamPage() {
         chatMessages: ChatMessage[];
       }>(`query($streamUuid:String!){chatMessages(streamUuid:$streamUuid){uuid create_date anon_id anon_text_color anon_background_color name message}}`, { streamUuid: uuid })
       .then((r) => setMessages(r.chatMessages));
+
+    client
+      .request<{ streamPositions: StreamPosition[] }>(
+        `query($uuid:String!){streamPositions(uuid:$uuid){stage peer_id parents children}}`,
+        { uuid }
+      )
+      .then((r) => setPositions(r.streamPositions))
+      .catch(() => {});
 
     if (!isHost) {
       client.request(
@@ -103,13 +135,19 @@ export default function LiveStreamPage() {
         };
         const payload = JSON.parse(msg.payload) as any;
 
-        // Host receives offers/ice; Viewer receives answers/ice.
-        if (payload.type === "offer" && isHost) {
-          const pc = getOrCreatePc(msg.fromPeerId, true);
+        if (payload.type === "request-offer") {
+          // Child is asking parent to initiate connection.
+          await ensureOfferToPeer(msg.fromPeerId);
+          return;
+        }
+
+        if (payload.type === "offer") {
+          const pc = getOrCreatePc(msg.fromPeerId, "receiver");
           await pc.setRemoteDescription(payload.sdp);
           const answer = await pc.createAnswer();
           await pc.setLocalDescription(answer);
-          await client.request(
+          const gql = makeGqlClient(getToken() ?? undefined);
+          await gql.request(
             `mutation($streamUuid:String!,$toPeerId:String!,$fromPeerId:String!,$payload:String!){sendSignal(streamUuid:$streamUuid,toPeerId:$toPeerId,fromPeerId:$fromPeerId,payload:$payload)}`,
             {
               streamUuid: uuid,
@@ -121,11 +159,13 @@ export default function LiveStreamPage() {
               }),
             }
           );
+          return;
         }
 
-        if (payload.type === "answer" && !isHost) {
+        if (payload.type === "answer") {
           const pc = pcByPeerRef.current.get(msg.fromPeerId);
           if (pc) await pc.setRemoteDescription(payload.sdp);
+          return;
         }
 
         if (payload.type === "ice") {
@@ -138,6 +178,25 @@ export default function LiveStreamPage() {
             }
           }
         }
+      }
+    );
+
+    const disposeHierarchy = subscribe<{
+      hierarchyUpdated: { streamUuid: string; positions: StreamPosition[] };
+    }>(
+      {
+        query: `
+          subscription Hierarchy($uuid: String!) {
+            hierarchyUpdated(uuid: $uuid) {
+              streamUuid
+              positions { stage peer_id parents children }
+            }
+          }
+        `,
+        variables: { uuid },
+      },
+      (data) => {
+        setPositions(data.hierarchyUpdated.positions);
       }
     );
 
@@ -196,9 +255,13 @@ export default function LiveStreamPage() {
       disposeChat();
       disposeStream();
       disposeSignal();
+      disposeHierarchy();
 
       pcByPeerRef.current.forEach((pc) => pc.close());
       pcByPeerRef.current.clear();
+      pcRoleByPeerRef.current.clear();
+      senderTracksByPeerRef.current.clear();
+      upstreamStreamsByPeerRef.current.clear();
 
       if (!isHost) {
         client.request(
@@ -216,7 +279,21 @@ export default function LiveStreamPage() {
     }
   }, [router, stream?.status, uuid]);
 
-  function getOrCreatePc(otherPeerId: string, asHost: boolean) {
+  useEffect(() => {
+    // Whenever hierarchy changes, ensure we have the right upstream/downstream connections.
+    syncConnections();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [positions, myPosition?.peer_id]);
+
+  useEffect(() => {
+    // If a moderator ends the stream, make sure the host flushes the final partial clip.
+    if (stream?.status === "processing" && isHost) {
+      stopRecordingAndUploadFinalClip().catch(() => {});
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isHost, stream?.status]);
+
+  function getOrCreatePc(otherPeerId: string, role: "sender" | "receiver") {
     const existing = pcByPeerRef.current.get(otherPeerId);
     if (existing) return existing;
 
@@ -238,34 +315,219 @@ export default function LiveStreamPage() {
       );
     };
 
-    if (asHost) {
-      // Host: attach local tracks
-      const local = localStreamRef.current;
-      if (local) {
-        local.getTracks().forEach((t) => pc.addTrack(t, local));
+    pc.onconnectionstatechange = () => {
+      if (role === "receiver") {
+        // If the active upstream drops, switch to another.
+        if (pc.connectionState === "failed" || pc.connectionState === "disconnected") {
+          if (activeUpstreamPeerRef.current === otherPeerId) {
+            selectActiveUpstream();
+          }
+        }
       }
+    };
+
+    if (role === "sender") {
+      attachRelayTracksToSenderPc(otherPeerId, pc);
     } else {
       pc.ontrack = (ev) => {
-        if (remoteVideoRef.current) {
-          const [stream] = ev.streams;
-          remoteVideoRef.current.srcObject = stream;
-        }
+        const [s] = ev.streams;
+        if (!s) return;
+        upstreamStreamsByPeerRef.current.set(otherPeerId, s);
+        selectActiveUpstream();
       };
     }
 
     pcByPeerRef.current.set(otherPeerId, pc);
+    pcRoleByPeerRef.current.set(otherPeerId, role);
     return pc;
+  }
+
+  function getRelaySourceStream(): MediaStream | null {
+    if (isHost) return localStreamRef.current;
+    return relaySourceStreamRef.current;
+  }
+
+  function attachRelayTracksToSenderPc(otherPeerId: string, pc: RTCPeerConnection) {
+    const src = getRelaySourceStream();
+    if (!src) return;
+    const senders: RTCRtpSender[] = [];
+    src.getTracks().forEach((t) => {
+      try {
+        senders.push(pc.addTrack(t, src));
+      } catch {
+        // ignore
+      }
+    });
+    senderTracksByPeerRef.current.set(otherPeerId, senders);
+  }
+
+  function replaceRelayTracksOnSenderPc(otherPeerId: string, pc: RTCPeerConnection) {
+    const src = getRelaySourceStream();
+    if (!src) return;
+    const senders = senderTracksByPeerRef.current.get(otherPeerId) ?? [];
+    const byKind = new Map(src.getTracks().map((t) => [t.kind, t]));
+    senders.forEach((s) => {
+      const kind = s.track?.kind;
+      const next = kind ? byKind.get(kind) ?? null : null;
+      s.replaceTrack(next).catch(() => {});
+    });
+  }
+
+  function selectActiveUpstream() {
+    if (isHost) return;
+    const parentOrder = myPosition?.parents ?? [];
+    const map = upstreamStreamsByPeerRef.current;
+    const next =
+      parentOrder.find((p) => map.has(p)) ?? (map.keys().next().value as string | undefined);
+    if (!next) return;
+    activeUpstreamPeerRef.current = next;
+    const stream = map.get(next) ?? null;
+    if (stream && remoteVideoRef.current) {
+      remoteVideoRef.current.srcObject = stream;
+    }
+    relaySourceStreamRef.current = stream;
+
+    // If we're a relay for downstream peers, swap tracks.
+    for (const child of myPosition?.children ?? []) {
+      const pc = pcByPeerRef.current.get(child);
+      if (pc && pcRoleByPeerRef.current.get(child) === "sender") {
+        replaceRelayTracksOnSenderPc(child, pc);
+      }
+    }
+
+    // Now that we have an upstream source, ensure downstream offers can be created.
+    syncConnections();
+  }
+
+  async function requestOfferFromParent(parentPeerId: string) {
+    const client = makeGqlClient(getToken() ?? undefined);
+    await client.request(
+      `mutation($streamUuid:String!,$toPeerId:String!,$fromPeerId:String!,$payload:String!){sendSignal(streamUuid:$streamUuid,toPeerId:$toPeerId,fromPeerId:$fromPeerId,payload:$payload)}`,
+      {
+        streamUuid: uuid,
+        toPeerId: parentPeerId,
+        fromPeerId: peerId,
+        payload: JSON.stringify({ type: "request-offer" }),
+      }
+    );
+  }
+
+  async function ensureOfferToPeer(childPeerId: string) {
+    const shouldServe = (myPosition?.children ?? []).includes(childPeerId);
+    if (!shouldServe) return;
+    const src = getRelaySourceStream();
+    if (!src) return;
+
+    const pc = getOrCreatePc(childPeerId, "sender");
+    // Ensure tracks are attached (or replaced) before offering.
+    if (!senderTracksByPeerRef.current.has(childPeerId)) {
+      attachRelayTracksToSenderPc(childPeerId, pc);
+    } else {
+      replaceRelayTracksOnSenderPc(childPeerId, pc);
+    }
+
+    if (pc.signalingState !== "stable") return;
+    if (pc.localDescription) return;
+
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    const client = makeGqlClient(getToken() ?? undefined);
+    await client.request(
+      `mutation($streamUuid:String!,$toPeerId:String!,$fromPeerId:String!,$payload:String!){sendSignal(streamUuid:$streamUuid,toPeerId:$toPeerId,fromPeerId:$fromPeerId,payload:$payload)}`,
+      {
+        streamUuid: uuid,
+        toPeerId: childPeerId,
+        fromPeerId: peerId,
+        payload: JSON.stringify({
+          type: "offer",
+          sdp: pc.localDescription,
+        }),
+      }
+    );
+  }
+
+  function closePeer(otherPeerId: string) {
+    const pc = pcByPeerRef.current.get(otherPeerId);
+    if (pc) pc.close();
+    pcByPeerRef.current.delete(otherPeerId);
+    pcRoleByPeerRef.current.delete(otherPeerId);
+    senderTracksByPeerRef.current.delete(otherPeerId);
+    upstreamStreamsByPeerRef.current.delete(otherPeerId);
+    if (activeUpstreamPeerRef.current === otherPeerId) {
+      activeUpstreamPeerRef.current = null;
+    }
+  }
+
+  function syncConnections() {
+    const my = myPosition;
+    if (!my) return;
+
+    const parents = my.parents ?? [];
+    const children = my.children ?? [];
+
+    // Close connections that are no longer relevant.
+    for (const otherPeerId of pcByPeerRef.current.keys()) {
+      if (!parents.includes(otherPeerId) && !children.includes(otherPeerId)) {
+        closePeer(otherPeerId);
+      }
+    }
+
+    // Upstream: request offers from parents (parent initiates).
+    for (const p of parents) {
+      if (!pcByPeerRef.current.has(p)) {
+        requestOfferFromParent(p).catch(() => {});
+      }
+    }
+
+    // Downstream: initiate offers to children if we have a relay source.
+    for (const c of children) {
+      ensureOfferToPeer(c).catch(() => {});
+    }
+  }
+
+  async function stopRecordingAndUploadFinalClip() {
+    const rec = recorderRef.current;
+    if (!rec) return;
+    recorderRef.current = null;
+
+    await new Promise<void>((resolve) => {
+      const onStop = () => resolve();
+      try {
+        rec.addEventListener("stop", onStop, { once: true });
+        rec.requestData();
+        rec.stop();
+      } catch {
+        resolve();
+      }
+    });
+
+    // Upload any remaining buffered media, even if under CLIP_LENGTH.
+    const pending = clipBufferRef.current;
+    if (pending.bytes > 0 && pending.blobs.length > 0) {
+      const blob = new Blob(pending.blobs, { type: "video/webm" });
+      clipBufferRef.current = { blobs: [], bytes: 0 };
+      await queueUpload(async () => {
+        await uploadBlob({
+          url: clipUploadUrl(uuid),
+          file: blob,
+          filename: `clip-final-${Date.now()}.webm`,
+          contentType: "video/webm",
+        });
+      });
+    }
   }
 
   async function startHosting() {
     if (localStreamRef.current) return;
     try {
       setRtcError(null);
-      const local = await navigator.mediaDevices.getUserMedia({
-        video: true,
-        audio: true,
-      });
+      const raw = window.localStorage.getItem(`easystream:hostMedia:${uuid}`);
+      const parsed = raw ? (JSON.parse(raw) as { video: any; audio: any }) : null;
+      const local = await navigator.mediaDevices.getUserMedia(
+        parsed ?? { video: true, audio: true }
+      );
       localStreamRef.current = local;
+      relaySourceStreamRef.current = local;
       if (localVideoRef.current) localVideoRef.current.srcObject = local;
 
       // Recording: buffer blobs until ~CLIP_LENGTH_MB (default 50MB), then upload
@@ -287,16 +549,21 @@ export default function LiveStreamPage() {
             type: "video/webm",
           });
           clipBufferRef.current = { blobs: [], bytes: 0 };
-          await uploadBlob({
-            url: clipUploadUrl(uuid),
-            file: blob,
-            filename: `clip-${Date.now()}.webm`,
-            contentType: "video/webm",
+          await queueUpload(async () => {
+            await uploadBlob({
+              url: clipUploadUrl(uuid),
+              file: blob,
+              filename: `clip-${Date.now()}.webm`,
+              contentType: "video/webm",
+            });
           });
         }
       };
 
       rec.start(5000); // 5s chunks for buffering
+
+      // Now that we have a source stream, initiate offers to current children.
+      syncConnections();
     } catch (e: any) {
       setRtcError(
         e?.name === "NotAllowedError"
@@ -332,6 +599,16 @@ export default function LiveStreamPage() {
               className="rounded-md bg-red-600 px-3 py-2 text-sm text-gray-200 hover:bg-red-500"
               onClick={async () => {
                 const client = makeGqlClient(getToken() ?? undefined);
+                if (isHost) {
+                  // Ensure the final partial clip gets uploaded before we end the stream.
+                  await stopRecordingAndUploadFinalClip();
+                  await uploadQueueRef.current;
+                  try {
+                    localStreamRef.current?.getTracks().forEach((t) => t.stop());
+                  } catch {
+                    // ignore
+                  }
+                }
                 await client.request(
                   `mutation($uuid:String!){endStream(uuid:$uuid){uuid status}}`,
                   {
@@ -352,9 +629,6 @@ export default function LiveStreamPage() {
           <div className="text-lg font-semibold">Stream has ended</div>
           <div className="mt-1 text-sm text-slate-600">
             Once it has finished processing, you will be redirected.
-          </div>
-          <div className="mt-4 text-sm">
-            (MVP: redirect will happen once processing is implemented.)
           </div>
           <div className="mt-3">
             <Link
@@ -390,9 +664,15 @@ export default function LiveStreamPage() {
                   Start Camera + Broadcast
                 </button>
                 <div className="text-xs text-slate-600">
-                  Viewer connections are established via GraphQL signaling
-                  (STUN-only).
+                  Waterfall connections are established via hierarchy updates +
+                  GraphQL signaling (STUN-only).
                 </div>
+                {myPosition ? (
+                  <div className="text-xs text-slate-500">
+                    Stage {myPosition.stage} • children:{" "}
+                    {(myPosition.children ?? []).length}
+                  </div>
+                ) : null}
               </div>
             ) : (
               <div className="space-y-3">
@@ -402,31 +682,10 @@ export default function LiveStreamPage() {
                   playsInline
                   className="w-full rounded-md border bg-black"
                 />
-                <button
-                  className="rounded-md border px-3 py-2 text-sm hover:bg-slate-50"
-                  onClick={async () => {
-                    const client = makeGqlClient();
-                    const pc = getOrCreatePc(`streamer-${uuid}`, false);
-                    const offer = await pc.createOffer();
-                    await pc.setLocalDescription(offer);
-                    await client.request(
-                      `mutation($streamUuid:String!,$toPeerId:String!,$fromPeerId:String!,$payload:String!){sendSignal(streamUuid:$streamUuid,toPeerId:$toPeerId,fromPeerId:$fromPeerId,payload:$payload)}`,
-                      {
-                        streamUuid: uuid,
-                        toPeerId: `streamer-${uuid}`,
-                        fromPeerId: peerId,
-                        payload: JSON.stringify({
-                          type: "offer",
-                          sdp: pc.localDescription,
-                        }),
-                      }
-                    );
-                  }}
-                >
-                  Connect to Stream
-                </button>
                 <div className="text-xs text-slate-600">
-                  (MVP) Direct viewer connection to the streamer.
+                  Auto-connecting using the waterfall hierarchy (parents:{" "}
+                  {(myPosition?.parents ?? []).length}, stage{" "}
+                  {myPosition?.stage ?? "…"}).
                 </div>
               </div>
             )}

@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { UploadsService } from '../uploads/uploads.service';
 import { buildAssemblePlan } from './assemble-plan';
 import { s3 } from '../s3/s3';
+import { pubsub, TOPIC_STREAM_UPDATED } from '../common/graphql-pubsub';
 import * as fs from 'fs/promises';
 import * as fsSync from 'fs';
 import * as path from 'path';
@@ -108,13 +109,16 @@ export class ProcessingService {
     // Delete original clips (best-effort)
     await this.deleteClipsBestEffort(clipUrls);
 
-    await this.prisma.stream.update({
+    const updated = await this.prisma.stream.update({
       where: { uuid: streamUuid },
       data: {
         status: 'past',
         fileUrls: assembledUrls,
       },
     });
+
+    // Notify all clients watching this stream that processing is complete.
+    await pubsub.publish(TOPIC_STREAM_UPDATED, { streamUpdated: updated });
   }
 
   private async runFfmpegConcat(listPath: string, outPath: string) {

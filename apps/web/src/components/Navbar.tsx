@@ -44,12 +44,20 @@ function NavLink({
 
 export function Navbar() {
   const searchParams = useSearchParams();
+  const pathname = usePathname();
   const [loggedIn, setLoggedIn] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   useEffect(() => {
     setLoggedIn(!!getToken());
   }, [searchParams]);
+
+  const loginHref = (() => {
+    const next = new URLSearchParams(searchParams.toString());
+    next.set("login", "true");
+    const qs = next.toString();
+    return qs ? `${pathname}?${qs}` : pathname;
+  })();
 
   return (
     <nav className="border-b bg-background">
@@ -99,7 +107,7 @@ export function Navbar() {
                 transition={transition}
               >
                 <BouncyClick>
-                  {loggedIn && (
+                  {loggedIn ? (
                     <Button
                       variant="destructive"
                       size="sm"
@@ -109,6 +117,10 @@ export function Navbar() {
                       }}
                     >
                       Logout
+                    </Button>
+                  ) : (
+                    <Button asChild variant="outline" size="sm">
+                      <Link href={loginHref}>Moderator Login</Link>
                     </Button>
                   )}
                 </BouncyClick>

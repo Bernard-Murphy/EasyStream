@@ -1,10 +1,10 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 
 import { makeGqlClient } from '@/lib/graphql';
-import { setToken } from '@/lib/auth';
+import { getToken, setToken } from '@/lib/auth';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -20,8 +20,9 @@ import { Label } from '@/components/ui/label';
 
 export function LoginModal() {
   const searchParams = useSearchParams();
+  const pathname = usePathname();
   const router = useRouter();
-  const show = searchParams.get('login') === 'true';
+  const show = searchParams.get('login') === 'true' && !getToken();
 
   const [username, setUsername] = useState('admin');
   const [password, setPassword] = useState('change_me');
@@ -32,12 +33,19 @@ export function LoginModal() {
     const next = new URLSearchParams(searchParams.toString());
     next.delete('login');
     const qs = next.toString();
-    return qs ? `/?${qs}` : '/';
-  }, [searchParams]);
+    return qs ? `${pathname}?${qs}` : pathname;
+  }, [pathname, searchParams]);
 
   useEffect(() => {
     if (!show) setError(null);
   }, [show]);
+
+  useEffect(() => {
+    // If user is already logged in and they hit a ?login=true URL, quietly remove it.
+    if (searchParams.get('login') === 'true' && getToken()) {
+      router.replace(closeUrl);
+    }
+  }, [closeUrl, router, searchParams]);
 
   const closeModal = () => {
     router.push(closeUrl);
