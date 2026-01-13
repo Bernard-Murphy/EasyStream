@@ -1,32 +1,32 @@
 @import "tailwindcss";
 
 :root {
-  --background: #020817;
+  --background: #262626;
   --foreground: #f8fafc;
 
-  --card: #020817;
+  --card: #262626;
   --card-foreground: #f8fafc;
 
-  --popover: #020817;
+  --popover: #262626;
   --popover-foreground: #f8fafc;
 
   --primary: #3b82f6;
   --primary-foreground: #020617;
 
-  --secondary: #1e293b;
+  --secondary: #4f4f4f;
   --secondary-foreground: #f8fafc;
 
-  --muted: #1e293b;
+  --muted: #4f4f4f;
   --muted-foreground: #94a3b8;
 
-  --accent: #1e293b;
+  --accent: #4f4f4f;
   --accent-foreground: #f8fafc;
 
   --destructive: #7f1d1d;
   --destructive-foreground: #f8fafc;
 
-  --border: #1e293b;
-  --input: #1e293b;
+  --border: #4f4f4f;
+  --input: #4f4f4f;
   --ring: #2563eb;
 
   --radius: 0.5rem;
@@ -51,24 +51,24 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #020817;
+    --background: #262626;
     --foreground: #f8fafc;
-    --card: #020817;
+    --card: #262626;
     --card-foreground: #f8fafc;
-    --popover: #020817;
+    --popover: #262626;
     --popover-foreground: #f8fafc;
     --primary: #3b82f6;
     --primary-foreground: #020617;
-    --secondary: #1e293b;
+    --secondary: #4f4f4f;
     --secondary-foreground: #f8fafc;
-    --muted: #1e293b;
+    --muted: #4f4f4f;
     --muted-foreground: #94a3b8;
-    --accent: #1e293b;
+    --accent: #4f4f4f;
     --accent-foreground: #f8fafc;
     --destructive: #7f1d1d;
     --destructive-foreground: #f8fafc;
-    --border: #1e293b;
-    --input: #1e293b;
+    --border: #4f4f4f;
+    --input: #4f4f4f;
     --ring: #2563eb;
     --radius: 0.5rem;
   }
@@ -78,4 +78,31 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+}
+
+.grecaptcha-badge {
+  visibility: hidden !important;
+}
+
+.ripple {
+  position: absolute;
+  width: 100px;
+  height: 100px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.3);
+  transform: translate(-50%, -50%) scale(0);
+  animation: ripple-animation 0.3s ease-out forwards;
+  pointer-events: none;
+  opacity: 1;
+}
+
+@keyframes ripple-animation {
+  0% {
+    transform: translate(-50%, -50%) scale(0);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(4);
+    opacity: 0;
+  }
 }

@@ -1,0 +1,1 @@
+API_PORT=4000 JWT_SECRET=dev_only_change_me DATABASE_URL='postgresql://easystream:easystream@localhost:5433/easystream?schema=public' npm --workspace apps/api run start:dev

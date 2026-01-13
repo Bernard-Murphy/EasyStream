@@ -1,20 +1,18 @@
 import * as React from "react";
 import { Slot } from "@radix-ui/react-slot";
 import { cva, type VariantProps } from "class-variance-authority";
-
 import { cn } from "@/lib/utils";
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
+  "inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 cursor-pointer",
   {
     variants: {
       variant: {
-        default: "bg-blue-500 text-slate-950 hover:bg-blue-500/90",
-        destructive: "bg-red-900 text-slate-50-foreground hover:bg-red-900/90",
-        outline:
-          "border border-input bg-slate-950 hover:bg-slate-800 hover:text-slate-50",
-        secondary: "bg-slate-800 text-slate-50 hover:bg-slate-800/80",
-        ghost: "hover:bg-slate-800 hover:text-slate-50",
+        default: "bg-blue-800 text-gray-200 hover:bg-blue-800/90",
+        destructive: "bg-red-900 text-zinc-50-foreground hover:bg-red-900/90",
+        outline: "border border-input hover:bg-zinc-600 hover:text-zinc-50",
+        secondary: "bg-zinc-600 text-zinc-50 hover:bg-zinc-600/80",
+        ghost: "hover:bg-zinc-600 hover:text-zinc-50",
         link: "text-blue-500 underline-offset-4 hover:underline",
       },
       size: {

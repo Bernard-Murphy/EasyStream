@@ -1,0 +1,1 @@
+npm --workspace apps/web run dev -- --port 3000

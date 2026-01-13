@@ -1,20 +1,20 @@
-'use client';
+"use client";
 
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { useParams } from 'next/navigation';
-import { makeGqlClient } from '@/lib/graphql';
-import { getOrCreateAnonSession, setAnonName } from '@/lib/anonSession';
-import { getToken } from '@/lib/auth';
-import Link from 'next/link';
-import { subscribe } from '@/lib/graphqlWs';
-import { clipUploadUrl, uploadBlob } from '@/lib/uploads';
-import { useRouter } from 'next/navigation';
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useParams } from "next/navigation";
+import { makeGqlClient } from "@/lib/graphql";
+import { getOrCreateAnonSession, setAnonName } from "@/lib/anonSession";
+import { getToken } from "@/lib/auth";
+import Link from "next/link";
+import { subscribe } from "@/lib/graphqlWs";
+import { clipUploadUrl, uploadBlob } from "@/lib/uploads";
+import { useRouter } from "next/navigation";
 
 type Stream = {
   uuid: string;
   title: string;
   description: string;
-  status: 'live' | 'processing' | 'past';
+  status: "live" | "processing" | "past";
 };
 
 type ChatMessage = {
@@ -34,13 +34,13 @@ export default function LiveStreamPage() {
 
   const [stream, setStream] = useState<Stream | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [chatText, setChatText] = useState('');
-  const [name, setName] = useState('');
+  const [chatText, setChatText] = useState("");
+  const [name, setName] = useState("");
   const [rtcError, setRtcError] = useState<string | null>(null);
 
   const isHost = useMemo(() => {
-    if (typeof window === 'undefined') return false;
-    return window.localStorage.getItem(`easystream:host:${uuid}`) === 'true';
+    if (typeof window === "undefined") return false;
+    return window.localStorage.getItem(`easystream:host:${uuid}`) === "true";
   }, [uuid]);
 
   const peerId = useMemo(() => {
@@ -52,22 +52,23 @@ export default function LiveStreamPage() {
   const localStreamRef = useRef<MediaStream | null>(null);
   const pcByPeerRef = useRef(new Map<string, RTCPeerConnection>());
   const recorderRef = useRef<MediaRecorder | null>(null);
-  const clipBufferRef = useRef<{ blobs: Blob[]; bytes: number }>({ blobs: [], bytes: 0 });
+  const clipBufferRef = useRef<{ blobs: Blob[]; bytes: number }>({
+    blobs: [],
+    bytes: 0,
+  });
 
   useEffect(() => {
     const client = makeGqlClient();
     client
-      .request<{ stream: Stream }>(
-        `query($uuid:String!){stream(uuid:$uuid){uuid title description status}}`,
-        { uuid },
-      )
+      .request<{
+        stream: Stream;
+      }>(`query($uuid:String!){stream(uuid:$uuid){uuid title description status}}`, { uuid })
       .then((r) => setStream(r.stream));
 
     client
-      .request<{ chatMessages: ChatMessage[] }>(
-        `query($streamUuid:String!){chatMessages(streamUuid:$streamUuid){uuid create_date anon_id anon_text_color anon_background_color name message}}`,
-        { streamUuid: uuid },
-      )
+      .request<{
+        chatMessages: ChatMessage[];
+      }>(`query($streamUuid:String!){chatMessages(streamUuid:$streamUuid){uuid create_date anon_id anon_text_color anon_background_color name message}}`, { streamUuid: uuid })
       .then((r) => setMessages(r.chatMessages));
 
     if (!isHost) {
@@ -76,7 +77,7 @@ export default function LiveStreamPage() {
         {
           uuid,
           peerId,
-        },
+        }
       );
     }
 
@@ -103,7 +104,7 @@ export default function LiveStreamPage() {
         const payload = JSON.parse(msg.payload) as any;
 
         // Host receives offers/ice; Viewer receives answers/ice.
-        if (payload.type === 'offer' && isHost) {
+        if (payload.type === "offer" && isHost) {
           const pc = getOrCreatePc(msg.fromPeerId, true);
           await pc.setRemoteDescription(payload.sdp);
           const answer = await pc.createAnswer();
@@ -114,17 +115,20 @@ export default function LiveStreamPage() {
               streamUuid: uuid,
               toPeerId: msg.fromPeerId,
               fromPeerId: peerId,
-              payload: JSON.stringify({ type: 'answer', sdp: pc.localDescription }),
-            },
+              payload: JSON.stringify({
+                type: "answer",
+                sdp: pc.localDescription,
+              }),
+            }
           );
         }
 
-        if (payload.type === 'answer' && !isHost) {
+        if (payload.type === "answer" && !isHost) {
           const pc = pcByPeerRef.current.get(msg.fromPeerId);
           if (pc) await pc.setRemoteDescription(payload.sdp);
         }
 
-        if (payload.type === 'ice') {
+        if (payload.type === "ice") {
           const pc = pcByPeerRef.current.get(msg.fromPeerId);
           if (pc && payload.candidate) {
             try {
@@ -134,7 +138,7 @@ export default function LiveStreamPage() {
             }
           }
         }
-      },
+      }
     );
 
     const disposeChat = subscribe<{
@@ -165,7 +169,7 @@ export default function LiveStreamPage() {
           if (prev.some((x) => x.uuid === m.uuid)) return prev;
           return [...prev, m];
         });
-      },
+      }
     );
 
     const disposeStream = subscribe<{ streamUpdated: Stream }>(
@@ -182,7 +186,7 @@ export default function LiveStreamPage() {
         `,
         variables: { uuid },
       },
-      (data) => setStream(data.streamUpdated),
+      (data) => setStream(data.streamUpdated)
     );
 
     // Redirect everyone to replay when processing completes
@@ -199,7 +203,7 @@ export default function LiveStreamPage() {
       if (!isHost) {
         client.request(
           `mutation($uuid:String!,$peerId:String!){leaveStream(uuid:$uuid,peerId:$peerId)}`,
-          { uuid, peerId },
+          { uuid, peerId }
         );
       }
     };
@@ -207,7 +211,7 @@ export default function LiveStreamPage() {
   }, [peerId, uuid, isHost]);
 
   useEffect(() => {
-    if (stream?.status === 'past') {
+    if (stream?.status === "past") {
       router.push(`/stream/${uuid}`);
     }
   }, [router, stream?.status, uuid]);
@@ -217,7 +221,7 @@ export default function LiveStreamPage() {
     if (existing) return existing;
 
     const pc = new RTCPeerConnection({
-      iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
+      iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
     });
 
     pc.onicecandidate = async (ev) => {
@@ -229,8 +233,8 @@ export default function LiveStreamPage() {
           streamUuid: uuid,
           toPeerId: otherPeerId,
           fromPeerId: peerId,
-          payload: JSON.stringify({ type: 'ice', candidate: ev.candidate }),
-        },
+          payload: JSON.stringify({ type: "ice", candidate: ev.candidate }),
+        }
       );
     };
 
@@ -257,7 +261,10 @@ export default function LiveStreamPage() {
     if (localStreamRef.current) return;
     try {
       setRtcError(null);
-      const local = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      const local = await navigator.mediaDevices.getUserMedia({
+        video: true,
+        audio: true,
+      });
       localStreamRef.current = local;
       if (localVideoRef.current) localVideoRef.current.srcObject = local;
 
@@ -265,7 +272,9 @@ export default function LiveStreamPage() {
       const clipLengthMb = Number(process.env.NEXT_PUBLIC_CLIP_LENGTH ?? 50);
       const clipBytes = clipLengthMb * 1024 * 1024;
 
-      const rec = new MediaRecorder(local, { mimeType: 'video/webm;codecs=vp8,opus' });
+      const rec = new MediaRecorder(local, {
+        mimeType: "video/webm;codecs=vp8,opus",
+      });
       recorderRef.current = rec;
 
       rec.ondataavailable = async (ev) => {
@@ -274,20 +283,26 @@ export default function LiveStreamPage() {
         clipBufferRef.current.bytes += ev.data.size;
 
         if (clipBufferRef.current.bytes >= clipBytes) {
-          const blob = new Blob(clipBufferRef.current.blobs, { type: 'video/webm' });
+          const blob = new Blob(clipBufferRef.current.blobs, {
+            type: "video/webm",
+          });
           clipBufferRef.current = { blobs: [], bytes: 0 };
           await uploadBlob({
             url: clipUploadUrl(uuid),
             file: blob,
             filename: `clip-${Date.now()}.webm`,
-            contentType: 'video/webm',
+            contentType: "video/webm",
           });
         }
       };
 
       rec.start(5000); // 5s chunks for buffering
     } catch (e: any) {
-      setRtcError(e?.name === 'NotAllowedError' ? 'Camera/mic permission denied.' : 'Failed to start camera/mic.');
+      setRtcError(
+        e?.name === "NotAllowedError"
+          ? "Camera/mic permission denied."
+          : "Failed to start camera/mic."
+      );
     }
   }
 
@@ -295,8 +310,12 @@ export default function LiveStreamPage() {
     <div className="mx-auto max-w-5xl px-4 py-8">
       <div className="mb-4 flex items-start justify-between gap-4">
         <div>
-          <div className="text-2xl font-semibold">{stream?.title ?? 'Loading…'}</div>
-          <div className="mt-1 text-sm text-slate-600">{stream?.description ?? ''}</div>
+          <div className="text-2xl font-semibold">
+            {stream?.title ?? "Loading…"}
+          </div>
+          <div className="mt-1 text-sm text-slate-600">
+            {stream?.description ?? ""}
+          </div>
           <div className="mt-1 text-xs text-slate-500">Stream ID: {uuid}</div>
         </div>
         <div className="flex items-center gap-2">
@@ -310,13 +329,16 @@ export default function LiveStreamPage() {
           </button>
           {getToken() ? (
             <button
-              className="rounded-md bg-red-600 px-3 py-2 text-sm text-white hover:bg-red-500"
+              className="rounded-md bg-red-600 px-3 py-2 text-sm text-gray-200 hover:bg-red-500"
               onClick={async () => {
                 const client = makeGqlClient(getToken() ?? undefined);
-                await client.request(`mutation($uuid:String!){endStream(uuid:$uuid){uuid status}}`, {
-                  uuid,
-                });
-                setStream((s) => (s ? { ...s, status: 'processing' } : s));
+                await client.request(
+                  `mutation($uuid:String!){endStream(uuid:$uuid){uuid status}}`,
+                  {
+                    uuid,
+                  }
+                );
+                setStream((s) => (s ? { ...s, status: "processing" } : s));
               }}
             >
               End Stream
@@ -325,7 +347,7 @@ export default function LiveStreamPage() {
         </div>
       </div>
 
-      {stream?.status === 'processing' ? (
+      {stream?.status === "processing" ? (
         <div className="rounded-lg border bg-white p-6 text-center">
           <div className="text-lg font-semibold">Stream has ended</div>
           <div className="mt-1 text-sm text-slate-600">
@@ -335,7 +357,10 @@ export default function LiveStreamPage() {
             (MVP: redirect will happen once processing is implemented.)
           </div>
           <div className="mt-3">
-            <Link className="text-sm font-medium underline" href={`/stream/${uuid}`}>
+            <Link
+              className="text-sm font-medium underline"
+              href={`/stream/${uuid}`}
+            >
               Go to replay page
             </Link>
           </div>
@@ -359,13 +384,14 @@ export default function LiveStreamPage() {
                   className="w-full rounded-md border bg-black"
                 />
                 <button
-                  className="rounded-md bg-slate-900 px-3 py-2 text-sm text-white hover:bg-slate-800"
+                  className="rounded-md bg-slate-900 px-3 py-2 text-sm text-gray-200 hover:bg-slate-800"
                   onClick={() => startHosting()}
                 >
                   Start Camera + Broadcast
                 </button>
                 <div className="text-xs text-slate-600">
-                  Viewer connections are established via GraphQL signaling (STUN-only).
+                  Viewer connections are established via GraphQL signaling
+                  (STUN-only).
                 </div>
               </div>
             ) : (
@@ -389,8 +415,11 @@ export default function LiveStreamPage() {
                         streamUuid: uuid,
                         toPeerId: `streamer-${uuid}`,
                         fromPeerId: peerId,
-                        payload: JSON.stringify({ type: 'offer', sdp: pc.localDescription }),
-                      },
+                        payload: JSON.stringify({
+                          type: "offer",
+                          sdp: pc.localDescription,
+                        }),
+                      }
                     );
                   }}
                 >
@@ -422,12 +451,16 @@ export default function LiveStreamPage() {
 
             <div className="h-72 overflow-auto rounded-md border bg-slate-50 p-2">
               {messages.length === 0 ? (
-                <div className="p-2 text-sm text-slate-600">No messages yet.</div>
+                <div className="p-2 text-sm text-slate-600">
+                  No messages yet.
+                </div>
               ) : (
                 <div className="space-y-2">
                   {messages.map((m) => (
                     <div key={m.uuid} className="text-sm">
-                      <span className="font-medium">{m.name || 'Anonymous'}</span>{' '}
+                      <span className="font-medium">
+                        {m.name || "Anonymous"}
+                      </span>{" "}
                       <span
                         className="rounded px-1.5 py-0.5 text-xs"
                         style={{
@@ -452,14 +485,16 @@ export default function LiveStreamPage() {
                 onChange={(e) => setChatText(e.target.value)}
               />
               <button
-                className="rounded-md bg-slate-900 px-3 py-2 text-sm text-white hover:bg-slate-800"
+                className="rounded-md bg-slate-900 px-3 py-2 text-sm text-gray-200 hover:bg-slate-800"
                 onClick={async () => {
                   const msg = chatText.trim();
                   if (!msg) return;
-                  setChatText('');
+                  setChatText("");
                   const anon = getOrCreateAnonSession();
                   const client = makeGqlClient();
-                  const res = await client.request<{ sendChatMessage: ChatMessage }>(
+                  const res = await client.request<{
+                    sendChatMessage: ChatMessage;
+                  }>(
                     `
                       mutation Send(
                         $streamUuid: String!
@@ -494,7 +529,7 @@ export default function LiveStreamPage() {
                       anon_id: anon.anon_id,
                       anon_text_color: anon.anon_text_color,
                       anon_background_color: anon.anon_background_color,
-                    },
+                    }
                   );
                   setMessages((prev) => [...prev, res.sendChatMessage]);
                 }}
@@ -508,5 +543,3 @@ export default function LiveStreamPage() {
     </div>
   );
 }
-
-
