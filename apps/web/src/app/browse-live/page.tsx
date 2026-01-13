@@ -15,9 +15,10 @@ type Stream = {
 export default async function BrowseLivePage({
   searchParams,
 }: {
-  searchParams?: { q?: string };
+  searchParams?: Promise<{ q?: string }>;
 }) {
-  const q = searchParams?.q ?? "";
+  const resolved = searchParams ? await searchParams : undefined;
+  const q = resolved?.q ?? "";
   const client = makeGqlClient();
   const data = await client.request<{ liveStreams: Stream[] }>(
     `

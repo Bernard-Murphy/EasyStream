@@ -18,14 +18,17 @@ function getWsClient(): Client {
   return _client;
 }
 
-export function subscribe<TData = any, TVariables = Record<string, any>>(
-  args: { query: string; variables?: TVariables },
+export function subscribe<
+  TData = any,
+  TVariables extends Record<string, unknown> = Record<string, unknown>,
+>(
+  args: { query: string; variables?: TVariables | null },
   onData: (data: TData) => void,
   onError?: (err: unknown) => void,
 ) {
   const client = getWsClient();
   const dispose = client.subscribe<TData>(
-    { query: args.query, variables: args.variables },
+    { query: args.query, variables: args.variables ?? undefined },
     {
       next: (value) => {
         if (value.data) onData(value.data as TData);

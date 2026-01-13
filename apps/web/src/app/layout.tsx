@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { Suspense } from "react";
 import "./globals.css";
 import { Navbar } from "@/components/Navbar";
 import { LoginModal } from "@/components/LoginModal";
@@ -31,8 +32,12 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        <Navbar />
-        <LoginModal />
+        <Suspense fallback={null}>
+          <Navbar />
+        </Suspense>
+        <Suspense fallback={null}>
+          <LoginModal />
+        </Suspense>
         <Toaster />
         <PageTransitions>{children}</PageTransitions>
       </body>
