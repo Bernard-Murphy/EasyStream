@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import { makeGqlClient } from "@/lib/graphql";
 import { getOrCreateAnonSession } from "@/lib/anonSession";
 import { thumbnailUploadUrl, uploadBlob } from "@/lib/uploads";
@@ -26,7 +27,6 @@ export function HomeStartStreaming() {
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   const [deviceLoading, setDeviceLoading] = useState(false);
@@ -36,6 +36,7 @@ export function HomeStartStreaming() {
   const [enableAudio, setEnableAudio] = useState(true);
   const [videoDeviceId, setVideoDeviceId] = useState<string>("");
   const [audioDeviceId, setAudioDeviceId] = useState<string>("");
+  const [deviceRefreshNonce, setDeviceRefreshNonce] = useState(0);
 
   const mediaConstraints = useMemo(() => {
     const video =
@@ -89,7 +90,163 @@ export function HomeStartStreaming() {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
+  }, [open, deviceRefreshNonce]);
+
+  const resetDevicesAndPermissions = async () => {
+    // Note: browsers don't allow programmatic permission revocation; this just re-requests
+    // and refreshes the enumerated device list + selections.
+    setDeviceLoading(true);
+    try {
+      setVideoDeviceId("");
+      setAudioDeviceId("");
+      setVideoInputs([]);
+      setAudioInputs([]);
+      try {
+        const tmp = await navigator.mediaDevices.getUserMedia({
+          video: enableVideo,
+          audio: enableAudio,
+        });
+        tmp.getTracks().forEach((t) => t.stop());
+        toast.info("Device access refreshed");
+      } catch {
+        toast.warning(
+          "Could not refresh device permissions. Check your browser site settings."
+        );
+      }
+    } finally {
+      setDeviceRefreshNonce((n) => n + 1);
+      setDeviceLoading(false);
+    }
+  };
+
+  const handleGoLive = async () => {
+    setLoading(true);
+    try {
+      if (typeof window === "undefined") return;
+      if (!("RTCPeerConnection" in window)) {
+        throw new Error("This browser does not support WebRTC.");
+      }
+      if (!("MediaRecorder" in window)) {
+        throw new Error(
+          "This browser cannot record streams (MediaRecorder missing)."
+        );
+      }
+      if (!navigator.mediaDevices?.getUserMedia) {
+        throw new Error("This browser cannot access media devices.");
+      }
+      if (!enableVideo && !enableAudio) {
+        throw new Error("Enable video and/or audio to start streaming.");
+      }
+
+      // Preflight permissions + constraints now so errors happen on the home page.
+      try {
+        const test =
+          await navigator.mediaDevices.getUserMedia(mediaConstraints);
+        test.getTracks().forEach((t) => t.stop());
+      } catch (e: any) {
+        throw new Error(
+          e?.name === "NotAllowedError"
+            ? "Camera/mic permission denied."
+            : "Failed to access selected devices."
+        );
+      }
+
+      const anon = getOrCreateAnonSession();
+      const client = makeGqlClient();
+      const res = await client.request<{
+        createStream: { uuid: string };
+      }>(
+        `
+          mutation CreateStream(
+            $title: String!
+            $description: String!
+            $anon_id: String
+            $anon_text_color: String
+            $anon_background_color: String
+          ) {
+            createStream(
+              title: $title
+              description: $description
+              anon_id: $anon_id
+              anon_text_color: $anon_text_color
+              anon_background_color: $anon_background_color
+            ) {
+              uuid
+            }
+          }
+        `,
+        {
+          title: title.trim() || "Untitled Stream",
+          description: description.trim() || "No description",
+          anon_id: anon.anon_id,
+          anon_text_color: anon.anon_text_color,
+          anon_background_color: anon.anon_background_color,
+        }
+      );
+      const uuid = res.createStream.uuid;
+
+      // Mark this browser as the host for this stream (used by /live/:id)
+      window.localStorage.setItem(`easystream:host:${uuid}`, "true");
+
+      // Persist selected constraints for /live/:id host startup.
+      window.localStorage.setItem(
+        `easystream:hostMedia:${uuid}`,
+        JSON.stringify(mediaConstraints)
+      );
+
+      // Best-effort: capture a thumbnail (if video enabled) and set it on the stream
+      if (enableVideo) {
+        try {
+          const media = await navigator.mediaDevices.getUserMedia({
+            video: mediaConstraints.video,
+            audio: false,
+          });
+          const video = document.createElement("video");
+          video.srcObject = media;
+          video.muted = true;
+          await video.play();
+          await new Promise((r) => setTimeout(r, 250));
+
+          const canvas = document.createElement("canvas");
+          canvas.width = video.videoWidth || 640;
+          canvas.height = video.videoHeight || 360;
+          const ctx = canvas.getContext("2d");
+          if (ctx) ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+          const blob: Blob | null = await new Promise((resolve) =>
+            canvas.toBlob((b) => resolve(b), "image/jpeg", 0.85)
+          );
+
+          media.getTracks().forEach((t) => t.stop());
+
+          if (blob) {
+            const up = await uploadBlob({
+              url: thumbnailUploadUrl(uuid),
+              file: blob,
+              filename: "thumbnail.jpg",
+              contentType: "image/jpeg",
+            });
+            await client.request(
+              `mutation($uuid:String!,$thumbnailUrl:String!){setStreamThumbnail(uuid:$uuid,thumbnailUrl:$thumbnailUrl){uuid}}`,
+              { uuid, thumbnailUrl: up.url }
+            );
+          }
+        } catch {
+          // ignore thumbnail failures for MVP
+        }
+      }
+
+      router.push(`/live/${uuid}`);
+    } catch (e: any) {
+      toast.warning(
+        e?.message ??
+          e?.response?.errors?.[0]?.message ??
+          "Failed to start stream"
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -126,6 +283,14 @@ export function HomeStartStreaming() {
                 <Spinner size="sm" /> Loading devices…
               </div>
             ) : null}
+            <button
+              type="button"
+              className="text-xs font-medium underline text-slate-700 hover:text-slate-900"
+              onClick={resetDevicesAndPermissions}
+              disabled={deviceLoading || loading}
+            >
+              Reset devices / permissions
+            </button>
           </div>
 
           {enableVideo ? (
@@ -189,11 +354,6 @@ export function HomeStartStreaming() {
             placeholder="What is this stream about?"
           />
         </div>
-        {error ? (
-          <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-            {error}
-          </div>
-        ) : null}
         <DialogFooter className="justify-end">
           <BouncyClick>
             <Button
@@ -205,149 +365,8 @@ export function HomeStartStreaming() {
               Cancel
             </Button>
           </BouncyClick>
-          <BouncyClick>
-            <Button
-              size="sm"
-              onClick={async () => {
-                setLoading(true);
-                setError(null);
-                try {
-                  if (typeof window === "undefined") return;
-                  if (!("RTCPeerConnection" in window)) {
-                    throw new Error("This browser does not support WebRTC.");
-                  }
-                  if (!("MediaRecorder" in window)) {
-                    throw new Error(
-                      "This browser cannot record streams (MediaRecorder missing)."
-                    );
-                  }
-                  if (!navigator.mediaDevices?.getUserMedia) {
-                    throw new Error(
-                      "This browser cannot access media devices."
-                    );
-                  }
-                  if (!enableVideo && !enableAudio) {
-                    throw new Error(
-                      "Enable video and/or audio to start streaming."
-                    );
-                  }
-
-                  // Preflight permissions + constraints now so errors happen on the home page.
-                  try {
-                    const test =
-                      await navigator.mediaDevices.getUserMedia(
-                        mediaConstraints
-                      );
-                    test.getTracks().forEach((t) => t.stop());
-                  } catch (e: any) {
-                    throw new Error(
-                      e?.name === "NotAllowedError"
-                        ? "Camera/mic permission denied."
-                        : "Failed to access selected devices."
-                    );
-                  }
-
-                  const anon = getOrCreateAnonSession();
-                  const client = makeGqlClient();
-                  const res = await client.request<{
-                    createStream: { uuid: string };
-                  }>(
-                    `
-                      mutation CreateStream(
-                        $title: String!
-                        $description: String!
-                        $anon_id: String
-                        $anon_text_color: String
-                        $anon_background_color: String
-                      ) {
-                        createStream(
-                          title: $title
-                          description: $description
-                          anon_id: $anon_id
-                          anon_text_color: $anon_text_color
-                          anon_background_color: $anon_background_color
-                        ) {
-                          uuid
-                        }
-                      }
-                    `,
-                    {
-                      title: title.trim() || "Untitled Stream",
-                      description: description.trim() || "No description",
-                      anon_id: anon.anon_id,
-                      anon_text_color: anon.anon_text_color,
-                      anon_background_color: anon.anon_background_color,
-                    }
-                  );
-                  const uuid = res.createStream.uuid;
-
-                  // Mark this browser as the host for this stream (used by /live/:id)
-                  window.localStorage.setItem(
-                    `easystream:host:${uuid}`,
-                    "true"
-                  );
-
-                  // Persist selected constraints for /live/:id host startup.
-                  window.localStorage.setItem(
-                    `easystream:hostMedia:${uuid}`,
-                    JSON.stringify(mediaConstraints)
-                  );
-
-                  // Best-effort: capture a thumbnail (if video enabled) and set it on the stream
-                  if (enableVideo) {
-                    try {
-                      const media = await navigator.mediaDevices.getUserMedia({
-                        video: mediaConstraints.video,
-                        audio: false,
-                      });
-                      const video = document.createElement("video");
-                      video.srcObject = media;
-                      video.muted = true;
-                      await video.play();
-                      await new Promise((r) => setTimeout(r, 250));
-
-                      const canvas = document.createElement("canvas");
-                      canvas.width = video.videoWidth || 640;
-                      canvas.height = video.videoHeight || 360;
-                      const ctx = canvas.getContext("2d");
-                      if (ctx)
-                        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-                      const blob: Blob | null = await new Promise((resolve) =>
-                        canvas.toBlob((b) => resolve(b), "image/jpeg", 0.85)
-                      );
-
-                      media.getTracks().forEach((t) => t.stop());
-
-                      if (blob) {
-                        const up = await uploadBlob({
-                          url: thumbnailUploadUrl(uuid),
-                          file: blob,
-                          filename: "thumbnail.jpg",
-                          contentType: "image/jpeg",
-                        });
-                        await client.request(
-                          `mutation($uuid:String!,$thumbnailUrl:String!){setStreamThumbnail(uuid:$uuid,thumbnailUrl:$thumbnailUrl){uuid}}`,
-                          { uuid, thumbnailUrl: up.url }
-                        );
-                      }
-                    } catch {
-                      // ignore thumbnail failures for MVP
-                    }
-                  }
-
-                  router.push(`/live/${uuid}`);
-                } catch (e: any) {
-                  setError(
-                    e?.message ??
-                      e?.response?.errors?.[0]?.message ??
-                      "Failed to start stream"
-                  );
-                } finally {
-                  setLoading(false);
-                }
-              }}
-            >
+          <BouncyClick disabled={loading}>
+            <Button disabled={loading} size="sm" onClick={handleGoLive}>
               {loading ? (
                 <>
                   <Spinner size="sm" />

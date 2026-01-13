@@ -50,6 +50,7 @@ const prisma_service_1 = require("../prisma/prisma.service");
 const uploads_service_1 = require("../uploads/uploads.service");
 const assemble_plan_1 = require("./assemble-plan");
 const s3_1 = require("../s3/s3");
+const graphql_pubsub_1 = require("../common/graphql-pubsub");
 const fs = __importStar(require("fs/promises"));
 const fsSync = __importStar(require("fs"));
 const path = __importStar(require("path"));
@@ -135,13 +136,14 @@ let ProcessingService = ProcessingService_1 = class ProcessingService {
             assembledUrls.push(uploaded.url);
         }
         await this.deleteClipsBestEffort(clipUrls);
-        await this.prisma.stream.update({
+        const updated = await this.prisma.stream.update({
             where: { uuid: streamUuid },
             data: {
                 status: 'past',
                 fileUrls: assembledUrls,
             },
         });
+        await graphql_pubsub_1.pubsub.publish(graphql_pubsub_1.TOPIC_STREAM_UPDATED, { streamUpdated: updated });
     }
     async runFfmpegConcat(listPath, outPath) {
         await new Promise((resolve, reject) => {

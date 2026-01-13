@@ -107,7 +107,7 @@ export function Navbar() {
                 transition={transition}
               >
                 <BouncyClick>
-                  {loggedIn ? (
+                  {loggedIn && (
                     <Button
                       variant="destructive"
                       size="sm"
@@ -117,10 +117,6 @@ export function Navbar() {
                       }}
                     >
                       Logout
-                    </Button>
-                  ) : (
-                    <Button asChild variant="outline" size="sm">
-                      <Link href={loginHref}>Moderator Login</Link>
                     </Button>
                   )}
                 </BouncyClick>
@@ -152,34 +148,4 @@ export function Navbar() {
       </div>
     </nav>
   );
-}
-
-{
-  /* <div className="sticky top-0 z-50 border-b bg-white/90 backdrop-blur">
-      <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
-        <Link href="/" className="text-lg font-semibold tracking-tight">
-          EasyStream
-        </Link>
-        <div className="flex items-center gap-5">
-          <NavLink href="/browse-live" label="Live Now" />
-          <NavLink href="/browse-past" label="Past Streams" />
-          {loggedIn ? (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                clearToken();
-                setLoggedIn(false);
-              }}
-            >
-              Logout
-            </Button>
-          ) : (
-            <Button asChild variant="ghost" size="sm">
-              <Link href="/?login=true">Moderator Login</Link>
-            </Button>
-          )}
-        </div>
-      </div>
-    </div> */
 }

@@ -9,6 +9,7 @@ import Link from "next/link";
 import { subscribe } from "@/lib/graphqlWs";
 import { clipUploadUrl, uploadBlob } from "@/lib/uploads";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 
 type Stream = {
   uuid: string;
@@ -43,7 +44,6 @@ export default function LiveStreamPage() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [chatText, setChatText] = useState("");
   const [name, setName] = useState("");
-  const [rtcError, setRtcError] = useState<string | null>(null);
   const [positions, setPositions] = useState<StreamPosition[]>([]);
 
   const isHost = useMemo(() => {
@@ -86,13 +86,19 @@ export default function LiveStreamPage() {
     client
       .request<{
         stream: Stream;
-      }>(`query($uuid:String!){stream(uuid:$uuid){uuid title description status}}`, { uuid })
+      }>(
+        `query($uuid:String!){stream(uuid:$uuid){uuid title description status}}`,
+        { uuid }
+      )
       .then((r) => setStream(r.stream));
 
     client
       .request<{
         chatMessages: ChatMessage[];
-      }>(`query($streamUuid:String!){chatMessages(streamUuid:$streamUuid){uuid create_date anon_id anon_text_color anon_background_color name message}}`, { streamUuid: uuid })
+      }>(
+        `query($streamUuid:String!){chatMessages(streamUuid:$streamUuid){uuid create_date anon_id anon_text_color anon_background_color name message}}`,
+        { streamUuid: uuid }
+      )
       .then((r) => setMessages(r.chatMessages));
 
     client
@@ -318,7 +324,10 @@ export default function LiveStreamPage() {
     pc.onconnectionstatechange = () => {
       if (role === "receiver") {
         // If the active upstream drops, switch to another.
-        if (pc.connectionState === "failed" || pc.connectionState === "disconnected") {
+        if (
+          pc.connectionState === "failed" ||
+          pc.connectionState === "disconnected"
+        ) {
           if (activeUpstreamPeerRef.current === otherPeerId) {
             selectActiveUpstream();
           }
@@ -347,7 +356,10 @@ export default function LiveStreamPage() {
     return relaySourceStreamRef.current;
   }
 
-  function attachRelayTracksToSenderPc(otherPeerId: string, pc: RTCPeerConnection) {
+  function attachRelayTracksToSenderPc(
+    otherPeerId: string,
+    pc: RTCPeerConnection
+  ) {
     const src = getRelaySourceStream();
     if (!src) return;
     const senders: RTCRtpSender[] = [];
@@ -361,14 +373,17 @@ export default function LiveStreamPage() {
     senderTracksByPeerRef.current.set(otherPeerId, senders);
   }
 
-  function replaceRelayTracksOnSenderPc(otherPeerId: string, pc: RTCPeerConnection) {
+  function replaceRelayTracksOnSenderPc(
+    otherPeerId: string,
+    pc: RTCPeerConnection
+  ) {
     const src = getRelaySourceStream();
     if (!src) return;
     const senders = senderTracksByPeerRef.current.get(otherPeerId) ?? [];
     const byKind = new Map(src.getTracks().map((t) => [t.kind, t]));
     senders.forEach((s) => {
       const kind = s.track?.kind;
-      const next = kind ? byKind.get(kind) ?? null : null;
+      const next = kind ? (byKind.get(kind) ?? null) : null;
       s.replaceTrack(next).catch(() => {});
     });
   }
@@ -378,7 +393,8 @@ export default function LiveStreamPage() {
     const parentOrder = myPosition?.parents ?? [];
     const map = upstreamStreamsByPeerRef.current;
     const next =
-      parentOrder.find((p) => map.has(p)) ?? (map.keys().next().value as string | undefined);
+      parentOrder.find((p) => map.has(p)) ??
+      (map.keys().next().value as string | undefined);
     if (!next) return;
     activeUpstreamPeerRef.current = next;
     const stream = map.get(next) ?? null;
@@ -520,9 +536,10 @@ export default function LiveStreamPage() {
   async function startHosting() {
     if (localStreamRef.current) return;
     try {
-      setRtcError(null);
       const raw = window.localStorage.getItem(`easystream:hostMedia:${uuid}`);
-      const parsed = raw ? (JSON.parse(raw) as { video: any; audio: any }) : null;
+      const parsed = raw
+        ? (JSON.parse(raw) as { video: any; audio: any })
+        : null;
       const local = await navigator.mediaDevices.getUserMedia(
         parsed ?? { video: true, audio: true }
       );
@@ -565,7 +582,7 @@ export default function LiveStreamPage() {
       // Now that we have a source stream, initiate offers to current children.
       syncConnections();
     } catch (e: any) {
-      setRtcError(
+      toast.warning(
         e?.name === "NotAllowedError"
           ? "Camera/mic permission denied."
           : "Failed to start camera/mic."
@@ -589,7 +606,12 @@ export default function LiveStreamPage() {
           <button
             className="rounded-md border px-3 py-2 text-sm hover:bg-slate-50"
             onClick={async () => {
-              await navigator.clipboard.writeText(window.location.href);
+              try {
+                await navigator.clipboard.writeText(window.location.href);
+                toast.info("Link copied");
+              } catch {
+                toast.warning("Failed to copy link");
+              }
             }}
           >
             Copy Link
@@ -604,7 +626,9 @@ export default function LiveStreamPage() {
                   await stopRecordingAndUploadFinalClip();
                   await uploadQueueRef.current;
                   try {
-                    localStreamRef.current?.getTracks().forEach((t) => t.stop());
+                    localStreamRef.current
+                      ?.getTracks()
+                      .forEach((t) => t.stop());
                   } catch {
                     // ignore
                   }
@@ -645,11 +669,6 @@ export default function LiveStreamPage() {
             <div className="mb-2 text-sm font-medium">Live Stream</div>
             {isHost ? (
               <div className="space-y-3">
-                {rtcError ? (
-                  <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                    {rtcError}
-                  </div>
-                ) : null}
                 <video
                   ref={localVideoRef}
                   autoPlay

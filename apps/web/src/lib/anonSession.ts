@@ -7,8 +7,11 @@ export type AnonSession = {
 
 const KEY = 'easystream:anonSession';
 
-function randomFrom<T>(arr: T[]): T {
-  return arr[Math.floor(Math.random() * arr.length)];
+function randomRgb(): string {
+  const r = Math.floor(Math.random() * 256);
+  const g = Math.floor(Math.random() * 256);
+  const b = Math.floor(Math.random() * 256);
+  return `rgb(${r}, ${g}, ${b})`;
 }
 
 export function getOrCreateAnonSession(): AnonSession {
@@ -29,13 +32,10 @@ export function getOrCreateAnonSession(): AnonSession {
     }
   }
 
-  const textColors = ['#111827', '#1f2937', '#0f172a', '#172554', '#3f1d0b'];
-  const bgColors = ['#fef3c7', '#dbeafe', '#dcfce7', '#fce7f3', '#e0e7ff'];
-
   const session: AnonSession = {
     anon_id: `anon-${crypto.randomUUID().slice(0, 8)}`,
-    anon_text_color: randomFrom(textColors),
-    anon_background_color: randomFrom(bgColors),
+    anon_text_color: randomRgb(),
+    anon_background_color: randomRgb(),
   };
   window.localStorage.setItem(KEY, JSON.stringify(session));
   return session;

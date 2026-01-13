@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { toast } from 'sonner';
 
 import { makeGqlClient } from '@/lib/graphql';
 import { getToken, setToken } from '@/lib/auth';
@@ -26,7 +27,6 @@ export function LoginModal() {
 
   const [username, setUsername] = useState('admin');
   const [password, setPassword] = useState('change_me');
-  const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   const closeUrl = useMemo(() => {
@@ -37,7 +37,7 @@ export function LoginModal() {
   }, [pathname, searchParams]);
 
   useEffect(() => {
-    if (!show) setError(null);
+    // no-op: keep effect to preserve semantics if we add local state later
   }, [show]);
 
   useEffect(() => {
@@ -83,11 +83,6 @@ export function LoginModal() {
               autoComplete="current-password"
             />
           </div>
-          {error ? (
-            <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-              {error}
-            </div>
-          ) : null}
         </div>
 
         <DialogFooter className="mt-4">
@@ -98,7 +93,6 @@ export function LoginModal() {
             size="sm"
             onClick={async () => {
               setLoading(true);
-              setError(null);
               try {
                 const client = makeGqlClient();
                 const res = await client.request<{
@@ -114,9 +108,10 @@ export function LoginModal() {
                   { u: username, p: password },
                 );
                 setToken(res.login.token);
+                toast.info('Logged in');
                 router.push(closeUrl);
               } catch (e: any) {
-                setError(e?.response?.errors?.[0]?.message ?? 'Login failed');
+                toast.warning(e?.response?.errors?.[0]?.message ?? 'Login failed');
               } finally {
                 setLoading(false);
               }
