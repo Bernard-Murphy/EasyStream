@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
@@ -12,23 +12,40 @@ type Limits = {
 };
 
 @Injectable()
-export class StreamsService {
+export class StreamsService implements OnModuleInit, OnModuleDestroy {
   private readonly limits: Limits;
+  private readonly stalePeerSeconds: number;
+  private pruneTimer: NodeJS.Timeout | null = null;
+  private readonly config: ConfigService;
 
   constructor(
     private readonly prisma: PrismaService,
     config: ConfigService,
   ) {
+    this.config = config;
     this.limits = {
       directViewerLimit: Number(config.get('DIRECT_VIEWER_LIMIT') ?? 4),
       childStreamerLimit: Number(config.get('CHILD_STREAMER_LIMIT') ?? 2),
       childViewerLimit: Number(config.get('CHILD_VIEWER_LIMIT') ?? 4),
     };
+    this.stalePeerSeconds = Number(config.get('STALE_PEER_SECONDS') ?? 30);
+  }
+
+  onModuleInit() {
+    // Best-effort: prune stale viewers periodically (helps with abrupt tab closes / network drops).
+    this.pruneTimer = setInterval(() => {
+      this.pruneStaleAcrossLiveStreams().catch(() => {});
+    }, 15_000);
+  }
+
+  onModuleDestroy() {
+    if (this.pruneTimer) clearInterval(this.pruneTimer);
+    this.pruneTimer = null;
   }
 
   async getByUuid(uuid: string) {
     const stream = await this.prisma.stream.findUnique({ where: { uuid } });
-    if (!stream) throw new NotFoundException('Stream not found');
+    if (!stream || stream.removed) throw new NotFoundException('Stream not found');
     return stream;
   }
 
@@ -99,9 +116,11 @@ export class StreamsService {
   }) {
     const anon = input.anon ?? createAnonSession();
     const uuid = randomUUID();
+    const hostToken = randomUUID();
     const stream = await this.prisma.stream.create({
       data: {
         uuid,
+        host_token: hostToken,
         start_time: new Date(),
         end_time: null,
         anon_id: anon.anon_id,
@@ -124,12 +143,13 @@ export class StreamsService {
         peer_id: `streamer-${stream.uuid}`,
         parents: [],
         children: [],
+        last_seen: new Date(),
       },
     });
 
     await pubsub.publish(TOPIC_STREAM_UPDATED, { streamUpdated: stream });
     await this.publishHierarchy(stream.id, stream.uuid);
-    return stream;
+    return { stream, hostToken };
   }
 
   async endStream(uuid: string) {
@@ -145,6 +165,15 @@ export class StreamsService {
     return updated;
   }
 
+  async endStreamAsHost(uuid: string, hostToken: string) {
+    const stream = await this.prisma.stream.findUnique({ where: { uuid } });
+    if (!stream) throw new NotFoundException('Stream not found');
+    if (!stream.host_token || stream.host_token !== hostToken) {
+      throw new NotFoundException('Stream not found'); // avoid leaking existence
+    }
+    return await this.endStream(uuid);
+  }
+
   async markPast(uuid: string, fileUrls: string[]) {
     const stream = await this.getByUuid(uuid);
     const updated = await this.prisma.stream.update({
@@ -153,6 +182,16 @@ export class StreamsService {
         status: 'past',
         fileUrls,
       },
+    });
+    await pubsub.publish(TOPIC_STREAM_UPDATED, { streamUpdated: updated });
+    return updated;
+  }
+
+  async removeStream(uuid: string) {
+    const stream = await this.getByUuid(uuid);
+    const updated = await this.prisma.stream.update({
+      where: { id: stream.id },
+      data: { removed: true },
     });
     await pubsub.publish(TOPIC_STREAM_UPDATED, { streamUpdated: updated });
     return updated;
@@ -174,7 +213,7 @@ export class StreamsService {
     const stream = await this.getByUuid(uuid);
     const created = await this.prisma.streamPosition.upsert({
       where: { stream_id_peer_id: { stream_id: stream.id, peer_id: peerId } },
-      update: {},
+      update: { last_seen: new Date() },
       create: {
         // stage is recomputed; create temporary placeholder
         stream_id: stream.id,
@@ -182,9 +221,11 @@ export class StreamsService {
         peer_id: peerId,
         parents: [],
         children: [],
+        last_seen: new Date(),
       },
     });
 
+    await this.pruneStaleForStreamId(stream.id);
     await this.recomputeHierarchy(stream.id);
     await this.publishHierarchy(stream.id, stream.uuid);
 
@@ -196,8 +237,24 @@ export class StreamsService {
     await this.prisma.streamPosition.deleteMany({
       where: { stream_id: stream.id, peer_id: peerId, NOT: { stage: 0 } },
     });
+    await this.pruneStaleForStreamId(stream.id);
     await this.recomputeHierarchy(stream.id);
     await this.publishHierarchy(stream.id, stream.uuid);
+    return true;
+  }
+
+  async heartbeat(uuid: string, peerId: string) {
+    const stream = await this.getByUuid(uuid);
+    await this.prisma.streamPosition.updateMany({
+      where: { stream_id: stream.id, peer_id: peerId },
+      data: { last_seen: new Date() },
+    });
+    // If peers expired since last tick, prune + re-publish.
+    const changed = await this.pruneStaleForStreamId(stream.id);
+    if (changed) {
+      await this.recomputeHierarchy(stream.id);
+      await this.publishHierarchy(stream.id, stream.uuid);
+    }
     return true;
   }
 
@@ -301,11 +358,11 @@ export class StreamsService {
       while (remaining.length > 0) {
         const viewer = remaining[0];
 
-        // choose parents with most slack first
-        const parents = availableParents
-          .slice()
-          .sort((a, b) => childrenCount(a) - childrenCount(b))
-          .slice(0, this.limits.childStreamerLimit);
+        // choose parents randomly among those with remaining capacity
+        const parents = this.pickRandomDistinct(
+          availableParents,
+          this.limits.childStreamerLimit,
+        );
 
         if (parents.length === 0) break;
 
@@ -351,6 +408,47 @@ export class StreamsService {
         });
       }),
     );
+  }
+
+  private pickRandomDistinct<T>(items: T[], n: number): T[] {
+    if (n <= 0) return [];
+    const arr = items.slice();
+    // Fisher–Yates shuffle (partial)
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr.slice(0, Math.min(n, arr.length));
+  }
+
+  private async pruneStaleForStreamId(streamId: number): Promise<boolean> {
+    const cutoff = new Date(Date.now() - this.stalePeerSeconds * 1000);
+    const res = await this.prisma.streamPosition.deleteMany({
+      where: {
+        stream_id: streamId,
+        NOT: { stage: 0 },
+        last_seen: { lt: cutoff },
+      },
+    });
+    return res.count > 0;
+  }
+
+  private async pruneStaleAcrossLiveStreams() {
+    const cutoff = new Date(Date.now() - this.stalePeerSeconds * 1000);
+    const live = await this.prisma.stream.findMany({
+      where: { status: 'live', removed: false },
+      select: { id: true, uuid: true },
+      take: 200,
+    });
+    for (const s of live) {
+      const res = await this.prisma.streamPosition.deleteMany({
+        where: { stream_id: s.id, NOT: { stage: 0 }, last_seen: { lt: cutoff } },
+      });
+      if (res.count > 0) {
+        await this.recomputeHierarchy(s.id);
+        await this.publishHierarchy(s.id, s.uuid);
+      }
+    }
   }
 }
 

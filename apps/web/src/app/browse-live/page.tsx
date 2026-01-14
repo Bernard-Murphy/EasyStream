@@ -15,15 +15,16 @@ type Stream = {
 export default async function BrowseLivePage({
   searchParams,
 }: {
-  searchParams?: Promise<{ q?: string }>;
+  searchParams?: Promise<{ q?: string; sort?: "viewers" | "recent" }>;
 }) {
   const resolved = searchParams ? await searchParams : undefined;
   const q = resolved?.q ?? "";
+  const sort = resolved?.sort === "recent" ? "recent" : "viewers";
   const client = makeGqlClient();
   const data = await client.request<{ liveStreams: Stream[] }>(
     `
-      query LiveStreams($q: String) { 
-        liveStreams(sort: "viewers", search: $q) {
+      query LiveStreams($q: String, $sort: String) { 
+        liveStreams(sort: $sort, search: $q) {
           uuid
           title
           description
@@ -32,7 +33,7 @@ export default async function BrowseLivePage({
         }
       }
     `,
-    { q }
+    { q, sort }
   );
 
   return (
@@ -41,10 +42,18 @@ export default async function BrowseLivePage({
         <div>
           <div className="text-2xl font-semibold">Live Now</div>
           <div className="text-sm text-zinc-500">
-            Sorted by viewer count (MVP uses active positions).
+            Sorted by {sort === "recent" ? "most recent" : "viewer count"}.
           </div>
         </div>
         <form action="/browse-live" className="flex items-center gap-2">
+          <select
+            name="sort"
+            defaultValue={sort}
+            className="rounded-md border px-3 py-2 text-sm bg-transparent"
+          >
+            <option value="viewers">Most viewers</option>
+            <option value="recent">Most recent</option>
+          </select>
           <input
             name="q"
             defaultValue={q}

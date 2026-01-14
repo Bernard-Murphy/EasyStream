@@ -5,6 +5,7 @@ import { UploadsService } from '../uploads/uploads.service';
 import { buildAssemblePlan } from './assemble-plan';
 import { s3 } from '../s3/s3';
 import { pubsub, TOPIC_STREAM_UPDATED } from '../common/graphql-pubsub';
+import AWS from 'aws-sdk';
 import * as fs from 'fs/promises';
 import * as fsSync from 'fs';
 import * as path from 'path';
@@ -26,6 +27,30 @@ export class ProcessingService {
 
     const clipUrls = stream.fileUrls ?? [];
     const streamLengthMb = Number(this.config.get('STREAM_LENGTH') ?? 250);
+
+    const mode = String(this.config.get('ASSEMBLY_MODE') ?? 'local');
+    const lambdaName = this.config.get<string>('ASSEMBLE_STREAM_LAMBDA_NAME') ?? '';
+
+    if (mode === 'lambda' && lambdaName) {
+      try {
+        const assembledUrls = await this.assembleViaLambda({
+          lambdaName,
+          streamUuid,
+          clipUrls,
+          streamLengthMb,
+        });
+        const updated = await this.prisma.stream.update({
+          where: { uuid: streamUuid },
+          data: { status: 'past', fileUrls: assembledUrls },
+        });
+        await pubsub.publish(TOPIC_STREAM_UPDATED, { streamUpdated: updated });
+        return;
+      } catch (e: any) {
+        this.logger.warn(
+          `Lambda assembly failed; falling back to local: ${e?.message ?? e}`,
+        );
+      }
+    }
 
     const clipSizesMb = await Promise.all(
       clipUrls.map(async (url) => {
@@ -119,6 +144,39 @@ export class ProcessingService {
 
     // Notify all clients watching this stream that processing is complete.
     await pubsub.publish(TOPIC_STREAM_UPDATED, { streamUpdated: updated });
+  }
+
+  private async assembleViaLambda(params: {
+    lambdaName: string;
+    streamUuid: string;
+    clipUrls: string[];
+    streamLengthMb: number;
+  }): Promise<string[]> {
+    const lambda = new AWS.Lambda({
+      region: this.config.get<string>('REGION') ?? 'us-east-1',
+    });
+
+    const invoke = await lambda
+      .invoke({
+        FunctionName: params.lambdaName,
+        InvocationType: 'RequestResponse',
+        Payload: JSON.stringify({
+          streamUuid: params.streamUuid,
+          clipUrls: params.clipUrls,
+          streamLengthMb: params.streamLengthMb,
+          deleteClips: true,
+          outputPrefix: `streams/${params.streamUuid}/assembled`,
+        }),
+      })
+      .promise();
+
+    if (invoke.FunctionError) {
+      throw new Error(`Lambda error: ${invoke.FunctionError}`);
+    }
+    const raw = invoke.Payload ? invoke.Payload.toString() : '';
+    const parsed = raw ? JSON.parse(raw) : null;
+    const assembled = (parsed?.assembled ?? []) as Array<{ url: string }>;
+    return assembled.map((x) => x.url).filter(Boolean);
   }
 
   private async runFfmpegConcat(listPath: string, outPath: string) {

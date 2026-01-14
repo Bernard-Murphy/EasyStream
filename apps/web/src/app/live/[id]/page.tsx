@@ -10,12 +10,15 @@ import { subscribe } from "@/lib/graphqlWs";
 import { clipUploadUrl, uploadBlob } from "@/lib/uploads";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { CONFIG } from "@/lib/config";
+import { Trash2 } from "lucide-react";
 
 type Stream = {
   uuid: string;
   title: string;
   description: string;
   status: "live" | "processing" | "past";
+  removed?: boolean;
 };
 
 type ChatMessage = {
@@ -26,6 +29,7 @@ type ChatMessage = {
   anon_background_color: string;
   name?: string | null;
   message: string;
+  removed?: boolean;
 };
 
 type StreamPosition = {
@@ -41,6 +45,7 @@ export default function LiveStreamPage() {
   const router = useRouter();
 
   const [stream, setStream] = useState<Stream | null>(null);
+  const [streamError, setStreamError] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [chatText, setChatText] = useState("");
   const [name, setName] = useState("");
@@ -49,6 +54,11 @@ export default function LiveStreamPage() {
   const isHost = useMemo(() => {
     if (typeof window === "undefined") return false;
     return window.localStorage.getItem(`easystream:host:${uuid}`) === "true";
+  }, [uuid]);
+
+  const hostToken = useMemo(() => {
+    if (typeof window === "undefined") return null;
+    return window.localStorage.getItem(`easystream:hostToken:${uuid}`);
   }, [uuid]);
 
   const peerId = useMemo(() => {
@@ -87,10 +97,15 @@ export default function LiveStreamPage() {
       .request<{
         stream: Stream;
       }>(
-        `query($uuid:String!){stream(uuid:$uuid){uuid title description status}}`,
+        `query($uuid:String!){stream(uuid:$uuid){uuid title description status removed}}`,
         { uuid }
       )
-      .then((r) => setStream(r.stream));
+      .then((r) => setStream(r.stream))
+      .catch((e: any) => {
+        setStreamError(
+          e?.response?.errors?.[0]?.message ?? "Stream not found (or removed)."
+        );
+      });
 
     client
       .request<{
@@ -118,6 +133,30 @@ export default function LiveStreamPage() {
         }
       );
     }
+
+    // Keep presence fresh + best-effort unload cleanup.
+    const heartbeatInterval = window.setInterval(() => {
+      client
+        .request(
+          `mutation($uuid:String!,$peerId:String!){heartbeatStream(uuid:$uuid,peerId:$peerId)}`,
+          { uuid, peerId }
+        )
+        .catch(() => {});
+    }, 10_000);
+
+    const sendBeaconLeave = () => {
+      try {
+        if (isHost) return;
+        const url = `${CONFIG.restUrl}/streams/${uuid}/leave`;
+        const body = JSON.stringify({ peerId });
+        const blob = new Blob([body], { type: "application/json" });
+        navigator.sendBeacon(url, blob);
+      } catch {
+        // ignore
+      }
+    };
+
+    window.addEventListener("beforeunload", sendBeaconLeave);
 
     const disposeSignal = subscribe<{ signalReceived: any }>(
       {
@@ -237,6 +276,37 @@ export default function LiveStreamPage() {
       }
     );
 
+    const disposeChatUpdated = subscribe<{
+      chatMessageUpdated: { streamUuid: string; message: ChatMessage };
+    }>(
+      {
+        query: `
+          subscription ChatUpdated($streamUuid: String!) {
+            chatMessageUpdated(streamUuid: $streamUuid) {
+              streamUuid
+              message {
+                uuid
+                create_date
+                anon_id
+                anon_text_color
+                anon_background_color
+                name
+                message
+                removed
+              }
+            }
+          }
+        `,
+        variables: { streamUuid: uuid },
+      },
+      (data) => {
+        const m = data.chatMessageUpdated.message;
+        setMessages((prev) =>
+          prev.map((x) => (x.uuid === m.uuid ? { ...x, removed: m.removed } : x))
+        );
+      }
+    );
+
     const disposeStream = subscribe<{ streamUpdated: Stream }>(
       {
         query: `
@@ -246,6 +316,7 @@ export default function LiveStreamPage() {
               title
               description
               status
+              removed
             }
           }
         `,
@@ -258,7 +329,14 @@ export default function LiveStreamPage() {
     // (handled by streamUpdated subscription updating state)
 
     return () => {
+      window.clearInterval(heartbeatInterval);
+      window.removeEventListener("beforeunload", sendBeaconLeave);
+      offerRetryRef.current.forEach((v) => {
+        if (v.timer) window.clearTimeout(v.timer);
+      });
+      offerRetryRef.current.clear();
       disposeChat();
+      disposeChatUpdated();
       disposeStream();
       disposeSignal();
       disposeHierarchy();
@@ -280,10 +358,17 @@ export default function LiveStreamPage() {
   }, [peerId, uuid, isHost]);
 
   useEffect(() => {
+    if (stream?.removed) {
+      // Stream was moderated away; stop any ongoing connections and send user back to listings.
+      pcByPeerRef.current.forEach((pc) => pc.close());
+      pcByPeerRef.current.clear();
+      router.push(`/browse-live`);
+      return;
+    }
     if (stream?.status === "past") {
       router.push(`/stream/${uuid}`);
     }
-  }, [router, stream?.status, uuid]);
+  }, [router, stream?.removed, stream?.status, uuid]);
 
   useEffect(() => {
     // Whenever hierarchy changes, ensure we have the right upstream/downstream connections.
@@ -324,12 +409,22 @@ export default function LiveStreamPage() {
     pc.onconnectionstatechange = () => {
       if (role === "receiver") {
         // If the active upstream drops, switch to another.
-        if (
-          pc.connectionState === "failed" ||
-          pc.connectionState === "disconnected"
-        ) {
-          if (activeUpstreamPeerRef.current === otherPeerId) {
-            selectActiveUpstream();
+        if (pc.connectionState === "failed" || pc.connectionState === "disconnected") {
+          // Tear down and re-request an offer if we still want this parent.
+          closePeer(otherPeerId);
+          if ((myPosition?.parents ?? []).includes(otherPeerId)) {
+            requestOfferFromParent(otherPeerId).catch(() => {});
+          }
+          selectActiveUpstream();
+        }
+      } else {
+        if (pc.connectionState === "failed" || pc.connectionState === "disconnected") {
+          // Tear down and re-offer if we still have this child.
+          closePeer(otherPeerId);
+          if ((myPosition?.children ?? []).includes(otherPeerId)) {
+            setTimeout(() => {
+              ensureOfferToPeer(otherPeerId).catch(() => {});
+            }, 1000);
           }
         }
       }
@@ -490,8 +585,9 @@ export default function LiveStreamPage() {
 
     // Upstream: request offers from parents (parent initiates).
     for (const p of parents) {
-      if (!pcByPeerRef.current.has(p)) {
-        requestOfferFromParent(p).catch(() => {});
+      const existing = pcByPeerRef.current.get(p);
+      if (!existing) {
+        requestOfferFromParentWithRetry(p);
       }
     }
 
@@ -499,6 +595,27 @@ export default function LiveStreamPage() {
     for (const c of children) {
       ensureOfferToPeer(c).catch(() => {});
     }
+  }
+
+  const offerRetryRef = useRef(new Map<string, { attempts: number; timer?: number }>());
+
+  function requestOfferFromParentWithRetry(parentPeerId: string) {
+    const state = offerRetryRef.current.get(parentPeerId) ?? { attempts: 0 };
+    // exponential backoff: 0.5s, 1s, 2s, 4s, 8s (cap)
+    const delay = Math.min(8000, 500 * Math.pow(2, state.attempts));
+    state.attempts += 1;
+    if (state.timer) window.clearTimeout(state.timer);
+    state.timer = window.setTimeout(() => {
+      requestOfferFromParent(parentPeerId)
+        .catch(() => {})
+        .finally(() => {
+          // If we still don't have a PC for this parent, retry again.
+          if ((myPosition?.parents ?? []).includes(parentPeerId) && !pcByPeerRef.current.has(parentPeerId)) {
+            requestOfferFromParentWithRetry(parentPeerId);
+          }
+        });
+    }, delay);
+    offerRetryRef.current.set(parentPeerId, state);
   }
 
   async function stopRecordingAndUploadFinalClip() {
@@ -592,6 +709,18 @@ export default function LiveStreamPage() {
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-8">
+      {streamError ? (
+        <div className="rounded-lg border bg-white p-6 text-center">
+          <div className="text-lg font-semibold">Stream unavailable</div>
+          <div className="mt-2 text-sm text-slate-600">{streamError}</div>
+          <div className="mt-4">
+            <Link className="text-sm font-medium underline" href="/browse-live">
+              Browse live streams
+            </Link>
+          </div>
+        </div>
+      ) : null}
+      {streamError ? null : (
       <div className="mb-4 flex items-start justify-between gap-4">
         <div>
           <div className="text-2xl font-semibold">
@@ -638,6 +767,28 @@ export default function LiveStreamPage() {
                   {
                     uuid,
                   }
+                );
+                setStream((s) => (s ? { ...s, status: "processing" } : s));
+              }}
+            >
+              End Stream
+            </button>
+          ) : isHost && hostToken ? (
+            <button
+              className="rounded-md bg-red-600 px-3 py-2 text-sm text-gray-200 hover:bg-red-500"
+              onClick={async () => {
+                const client = makeGqlClient();
+                // Ensure the final partial clip gets uploaded before we end the stream.
+                await stopRecordingAndUploadFinalClip();
+                await uploadQueueRef.current;
+                try {
+                  localStreamRef.current?.getTracks().forEach((t) => t.stop());
+                } catch {
+                  // ignore
+                }
+                await client.request(
+                  `mutation($uuid:String!,$hostToken:String!){endStreamAsHost(uuid:$uuid,hostToken:$hostToken){uuid status}}`,
+                  { uuid, hostToken }
                 );
                 setStream((s) => (s ? { ...s, status: "processing" } : s));
               }}
@@ -734,8 +885,10 @@ export default function LiveStreamPage() {
                 </div>
               ) : (
                 <div className="space-y-2">
-                  {messages.map((m) => (
-                    <div key={m.uuid} className="text-sm">
+                  {messages
+                    .filter((m) => !m.removed)
+                    .map((m) => (
+                    <div key={m.uuid} className="group text-sm">
                       <span className="font-medium">
                         {m.name || "Anonymous"}
                       </span>{" "}
@@ -748,6 +901,29 @@ export default function LiveStreamPage() {
                       >
                         {m.anon_id}
                       </span>
+                      {getToken() ? (
+                        <button
+                          className="ml-2 inline-flex items-center gap-1 rounded border bg-white px-2 py-0.5 text-xs text-slate-700 opacity-0 transition group-hover:opacity-100 hover:bg-slate-50"
+                          title="Remove message"
+                          onClick={async () => {
+                            try {
+                              const client = makeGqlClient(getToken() ?? undefined);
+                              await client.request(
+                                `mutation($uuid:String!){removeChatMessage(uuid:$uuid){uuid removed}}`,
+                                { uuid: m.uuid }
+                              );
+                              toast.info("Message removed");
+                            } catch (e: any) {
+                              toast.warning(
+                                e?.response?.errors?.[0]?.message ?? "Failed to remove"
+                              );
+                            }
+                          }}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                          Remove
+                        </button>
+                      ) : null}
                       <div className="mt-0.5 text-slate-800">{m.message}</div>
                     </div>
                   ))}
@@ -817,6 +993,7 @@ export default function LiveStreamPage() {
             </div>
           </div>
         </div>
+      )}
       )}
     </div>
   );

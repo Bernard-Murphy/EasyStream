@@ -18,6 +18,7 @@ import {
   DialogTitle,
   DialogDescription,
   DialogFooter,
+  // DialogClose
 } from "@/components/ui/dialog";
 import BouncyClick from "@/components/ui/bouncy-click";
 import Spinner from "@/components/ui/spinner";
@@ -154,24 +155,28 @@ export function HomeStartStreaming() {
       const anon = getOrCreateAnonSession();
       const client = makeGqlClient();
       const res = await client.request<{
-        createStream: { uuid: string };
+        createStreamWithHostToken: {
+          stream: { uuid: string };
+          hostToken: string;
+        };
       }>(
         `
-          mutation CreateStream(
+          mutation CreateStreamWithHostToken(
             $title: String!
             $description: String!
             $anon_id: String
             $anon_text_color: String
             $anon_background_color: String
           ) {
-            createStream(
+            createStreamWithHostToken(
               title: $title
               description: $description
               anon_id: $anon_id
               anon_text_color: $anon_text_color
               anon_background_color: $anon_background_color
             ) {
-              uuid
+              stream { uuid }
+              hostToken
             }
           }
         `,
@@ -183,10 +188,12 @@ export function HomeStartStreaming() {
           anon_background_color: anon.anon_background_color,
         }
       );
-      const uuid = res.createStream.uuid;
+      const uuid = res.createStreamWithHostToken.stream.uuid;
+      const hostToken = res.createStreamWithHostToken.hostToken;
 
       // Mark this browser as the host for this stream (used by /live/:id)
       window.localStorage.setItem(`easystream:host:${uuid}`, "true");
+      window.localStorage.setItem(`easystream:hostToken:${uuid}`, hostToken);
 
       // Persist selected constraints for /live/:id host startup.
       window.localStorage.setItem(
@@ -249,7 +256,9 @@ export function HomeStartStreaming() {
   };
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog
+    // open={open} onOpenChange={setOpen}
+    >
       <DialogTrigger asChild>
         <Button className="w-full">Start Streaming Now</Button>
       </DialogTrigger>

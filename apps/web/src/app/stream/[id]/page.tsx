@@ -1,9 +1,12 @@
-"use client";
+ "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { makeGqlClient } from "@/lib/graphql";
 import Link from "next/link";
+import { getToken } from "@/lib/auth";
+import { toast } from "sonner";
+import { Trash2 } from "lucide-react";
 
 type Stream = {
   uuid: string;
@@ -12,12 +15,14 @@ type Stream = {
   status: "live" | "processing" | "past";
   fileUrls: string[];
   start_time: string;
+  removed?: boolean;
 };
 
 export default function StreamReplayPage() {
   const params = useParams<{ id: string }>();
   const uuid = params.id;
   const [stream, setStream] = useState<Stream | null>(null);
+  const [streamError, setStreamError] = useState<string | null>(null);
   const [messages, setMessages] = useState<
     Array<{
       uuid: string;
@@ -27,6 +32,7 @@ export default function StreamReplayPage() {
       anon_background_color: string;
       name?: string | null;
       message: string;
+      removed?: boolean;
     }>
   >([]);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -39,8 +45,16 @@ export default function StreamReplayPage() {
     client
       .request<{
         stream: Stream;
-      }>(`query($uuid:String!){stream(uuid:$uuid){uuid title description status fileUrls start_time}}`, { uuid })
-      .then((r) => setStream(r.stream));
+      }>(
+        `query($uuid:String!){stream(uuid:$uuid){uuid title description status fileUrls start_time removed}}`,
+        { uuid }
+      )
+      .then((r) => setStream(r.stream))
+      .catch((e: any) => {
+        setStreamError(
+          e?.response?.errors?.[0]?.message ?? "Stream not found (or removed)."
+        );
+      });
 
     client
       .request<{
@@ -91,12 +105,25 @@ export default function StreamReplayPage() {
         ...m,
         offsetSec: (new Date(m.create_date).getTime() - startMs) / 1000,
       }))
+      .filter((m) => !m.removed)
       .filter((m) => m.offsetSec <= absoluteSec)
       .slice(-200);
   }, [activeIndex, baseOffsets, currentTime, messages, stream]);
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-8">
+      {streamError ? (
+        <div className="rounded-lg border bg-white p-6 text-center">
+          <div className="text-lg font-semibold">Stream unavailable</div>
+          <div className="mt-2 text-sm text-slate-600">{streamError}</div>
+          <div className="mt-4">
+            <Link className="text-sm font-medium underline" href="/browse-past">
+              Browse past streams
+            </Link>
+          </div>
+        </div>
+      ) : null}
+      {streamError ? null : (
       <div className="mb-4 flex items-start justify-between gap-4">
         <div>
           <div className="text-2xl font-semibold">
@@ -113,11 +140,44 @@ export default function StreamReplayPage() {
           Back to Live Page
         </Link>
       </div>
+      {getToken() ? (
+        <div className="mb-4 flex justify-end">
+          <button
+            className="rounded-md bg-red-600 px-3 py-2 text-sm text-gray-200 hover:bg-red-500"
+            onClick={async () => {
+              try {
+                const client = makeGqlClient(getToken() ?? undefined);
+                await client.request(
+                  `mutation($uuid:String!){removeStream(uuid:$uuid){uuid removed}}`,
+                  { uuid }
+                );
+                toast.info("Stream removed");
+              } catch (e: any) {
+                toast.warning(
+                  e?.response?.errors?.[0]?.message ?? "Failed to remove stream"
+                );
+              }
+            }}
+          >
+            Remove Stream
+          </button>
+        </div>
+      ) : null}
 
       <div className="grid gap-4 lg:grid-cols-[2fr_1fr]">
         <div className="rounded-lg border bg-white p-4">
           <div className="mb-2 text-sm font-medium">Replay</div>
-          {stream?.status !== "past" ? (
+          {stream?.removed ? (
+            <div className="text-sm text-slate-600">
+              This stream has been removed by a moderator.
+              <div className="mt-2">
+                <Link className="underline" href="/browse-past">
+                  Browse past streams
+                </Link>
+              </div>
+            </div>
+          ) : null}
+          {stream?.removed ? null : stream?.status !== "past" ? (
             <div className="text-sm text-slate-600">
               Stream is not processed yet (status: {stream?.status ?? "…"}).
             </div>
@@ -188,7 +248,7 @@ export default function StreamReplayPage() {
             ) : (
               <div className="space-y-2">
                 {syncedMessages.map((m) => (
-                  <div key={m.uuid} className="text-sm">
+                  <div key={m.uuid} className="group text-sm">
                     <span className="font-medium">{m.name || "Anonymous"}</span>{" "}
                     <span
                       className="rounded px-1.5 py-0.5 text-xs"
@@ -199,6 +259,34 @@ export default function StreamReplayPage() {
                     >
                       {m.anon_id}
                     </span>
+                    {getToken() ? (
+                      <button
+                        className="ml-2 inline-flex items-center gap-1 rounded border bg-white px-2 py-0.5 text-xs text-slate-700 opacity-0 transition group-hover:opacity-100 hover:bg-slate-50"
+                        title="Remove message"
+                        onClick={async () => {
+                          try {
+                            const client = makeGqlClient(getToken() ?? undefined);
+                            await client.request(
+                              `mutation($uuid:String!){removeChatMessage(uuid:$uuid){uuid removed}}`,
+                              { uuid: m.uuid }
+                            );
+                            toast.info("Message removed");
+                            setMessages((prev) =>
+                              prev.map((x) =>
+                                x.uuid === m.uuid ? { ...x, removed: true } : x
+                              )
+                            );
+                          } catch (e: any) {
+                            toast.warning(
+                              e?.response?.errors?.[0]?.message ?? "Failed to remove"
+                            );
+                          }
+                        }}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                        Remove
+                      </button>
+                    ) : null}
                     <div className="mt-0.5 text-slate-800">{m.message}</div>
                   </div>
                 ))}
@@ -207,6 +295,7 @@ export default function StreamReplayPage() {
           </div>
         </div>
       </div>
+      )}
     </div>
   );
 }

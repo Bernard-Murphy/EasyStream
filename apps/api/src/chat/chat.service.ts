@@ -2,7 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { createAnonSession } from '../common/anon';
-import { pubsub, TOPIC_CHAT_MESSAGE_ADDED } from '../common/graphql-pubsub';
+import { pubsub, TOPIC_CHAT_MESSAGE_ADDED, TOPIC_CHAT_MESSAGE_UPDATED } from '../common/graphql-pubsub';
 
 @Injectable()
 export class ChatService {
@@ -57,6 +57,28 @@ export class ChatService {
     });
 
     return msg;
+  }
+
+  async removeMessage(messageUuid: string) {
+    const existing = await this.prisma.chatMessage.findUnique({
+      where: { uuid: messageUuid },
+      include: { stream: true },
+    });
+    if (!existing) throw new NotFoundException('Message not found');
+
+    const updated = await this.prisma.chatMessage.update({
+      where: { uuid: messageUuid },
+      data: { removed: true },
+    });
+
+    await pubsub.publish(TOPIC_CHAT_MESSAGE_UPDATED, {
+      chatMessageUpdated: {
+        streamUuid: existing.stream.uuid,
+        message: updated,
+      },
+    });
+
+    return updated;
   }
 }
 

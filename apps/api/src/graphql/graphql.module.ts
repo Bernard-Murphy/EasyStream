@@ -14,7 +14,13 @@ import { HealthResolver } from './health.resolver';
       subscriptions: {
         'graphql-ws': true,
       },
-      context: ({ req }) => ({ req }),
+      context: ({ req, connectionParams }) => {
+        // For graphql-ws subscriptions, Nest won't provide an Express req.
+        // We synthesize a minimal req object so guards that read req.headers.authorization work.
+        if (req) return { req };
+        const headers = (connectionParams ?? {}) as Record<string, any>;
+        return { req: { headers } };
+      },
     }),
   ],
   providers: [HealthResolver],

@@ -21,6 +21,7 @@ enum StreamStatus {
 model Stream {
   id                   Int          @id @default(autoincrement())
   uuid                 String       @unique
+  host_token           String?      @unique
   start_time           DateTime
   end_time             DateTime?
   anon_id              String
@@ -44,6 +45,7 @@ model StreamPosition {
   peer_id   String
   parents   String[]
   children  String[]
+  last_seen DateTime @default(now())
 
   stream Stream @relation(fields: [stream_id], references: [id], onDelete: Cascade)
 

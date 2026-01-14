@@ -24,6 +24,16 @@ type ChatMessageAddedPayload {
   streamUuid: String!
 }
 
+type ChatMessageUpdatedPayload {
+  message: ChatMessage!
+  streamUuid: String!
+}
+
+type CreateStreamPayload {
+  hostToken: String!
+  stream: Stream!
+}
+
 """
 A date-time string at UTC, such as 2019-12-03T09:54:33Z, compliant with the date-time format.
 """
@@ -36,11 +46,16 @@ type HierarchyUpdate {
 
 type Mutation {
   createStream(anon_background_color: String, anon_id: String, anon_text_color: String, description: String!, thumbnailUrl: String, title: String!): Stream!
+  createStreamWithHostToken(anon_background_color: String, anon_id: String, anon_text_color: String, description: String!, thumbnailUrl: String, title: String!): CreateStreamPayload!
   endStream(uuid: String!): Stream!
+  endStreamAsHost(hostToken: String!, uuid: String!): Stream!
+  heartbeatStream(peerId: String!, uuid: String!): Boolean!
   joinStream(peerId: String!, uuid: String!): Boolean!
   leaveStream(peerId: String!, uuid: String!): Boolean!
   login(password: String!, username: String!): AuthPayload!
   markPast(fileUrls: [String!]!, uuid: String!): Stream!
+  removeChatMessage(uuid: String!): ChatMessage!
+  removeStream(uuid: String!): Stream!
   sendChatMessage(anon_background_color: String, anon_id: String, anon_text_color: String, message: String!, name: String, streamUuid: String!): ChatMessage!
   sendSignal(fromPeerId: String!, payload: String!, streamUuid: String!, toPeerId: String!): Boolean!
   setStreamThumbnail(thumbnailUrl: String, uuid: String!): Stream!
@@ -96,6 +111,7 @@ enum StreamStatus {
 
 type Subscription {
   chatMessageAdded(streamUuid: String!): ChatMessageAddedPayload!
+  chatMessageUpdated(streamUuid: String!): ChatMessageUpdatedPayload!
   hierarchyUpdated(uuid: String!): HierarchyUpdate!
   signalReceived(peerId: String!, streamUuid: String!): SignalMessage!
   streamUpdated(uuid: String!): Stream!

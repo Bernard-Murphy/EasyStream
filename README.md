@@ -34,6 +34,12 @@ DATABASE_URL='postgresql://easystream:easystream@localhost:5433/easystream?schem
 DATABASE_URL='postgresql://easystream:easystream@localhost:5433/easystream?schema=public' MOD_USERNAME=admin MOD_PASSWORD=change_me npm --workspace apps/api run seed
 ```
 
+If you pulled recent changes, re-run migrations (new columns: `Stream.host_token`, `StreamPosition.last_seen`):
+
+```bash
+DATABASE_URL='postgresql://easystream:easystream@localhost:5433/easystream?schema=public' npm --workspace apps/api run prisma:migrate
+```
+
 ### Run in dev
 
 Option A (recommended: separate terminals):
@@ -92,3 +98,6 @@ npm --workspace apps/web run dev -- --port 3000
 
 - Next dev uses `WATCHPACK_POLLING=true` to avoid Linux `ENOSPC` watcher limits.
 - Storj S3 client scaffold lives at `apps/api/src/s3/s3.ts` (per your config requirements).
+- Processing can run in two modes:
+  - `ASSEMBLY_MODE=local` (default): API assembles clips using ffmpeg
+  - `ASSEMBLY_MODE=lambda`: API invokes `ASSEMBLE_STREAM_LAMBDA_NAME` and falls back to local on failure

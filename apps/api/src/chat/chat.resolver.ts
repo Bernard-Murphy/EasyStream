@@ -1,11 +1,22 @@
 import { Args, Mutation, Query, Resolver, Subscription } from '@nestjs/graphql';
 import { ChatService } from './chat.service';
 import { ChatMessage } from './chat.types';
-import { pubsub, TOPIC_CHAT_MESSAGE_ADDED } from '../common/graphql-pubsub';
+import { pubsub, TOPIC_CHAT_MESSAGE_ADDED, TOPIC_CHAT_MESSAGE_UPDATED } from '../common/graphql-pubsub';
 import { Field, ObjectType } from '@nestjs/graphql';
+import { UseGuards } from '@nestjs/common';
+import { GqlJwtGuard } from '../auth/gql-jwt.guard';
 
 @ObjectType()
 class ChatMessageAddedPayload {
+  @Field()
+  streamUuid!: string;
+
+  @Field(() => ChatMessage)
+  message!: ChatMessage;
+}
+
+@ObjectType()
+class ChatMessageUpdatedPayload {
   @Field()
   streamUuid!: string;
 
@@ -43,11 +54,25 @@ export class ChatResolver {
     });
   }
 
+  @Mutation(() => ChatMessage)
+  @UseGuards(GqlJwtGuard)
+  async removeChatMessage(@Args('uuid') uuid: string) {
+    return await this.chat.removeMessage(uuid);
+  }
+
   @Subscription(() => ChatMessageAddedPayload, {
     filter: (payload, variables) => payload.chatMessageAdded.streamUuid === variables.streamUuid,
   })
   chatMessageAdded(@Args('streamUuid') streamUuid: string) {
     return pubsub.asyncIterableIterator(TOPIC_CHAT_MESSAGE_ADDED);
+  }
+
+  @Subscription(() => ChatMessageUpdatedPayload, {
+    filter: (payload, variables) =>
+      payload.chatMessageUpdated.streamUuid === variables.streamUuid,
+  })
+  chatMessageUpdated(@Args('streamUuid') streamUuid: string) {
+    return pubsub.asyncIterableIterator(TOPIC_CHAT_MESSAGE_UPDATED);
   }
 }
 

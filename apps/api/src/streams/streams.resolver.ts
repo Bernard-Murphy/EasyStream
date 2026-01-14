@@ -1,6 +1,7 @@
 import { Args, Mutation, Query, Resolver, Subscription } from '@nestjs/graphql';
 import { StreamsService } from './streams.service';
-import { Stream } from './stream.types';
+import type { Stream as PrismaStream } from '@prisma/client';
+import { Stream, StreamStatus } from './stream.types';
 import { pubsub, TOPIC_HIERARCHY_UPDATED, TOPIC_STREAM_UPDATED } from '../common/graphql-pubsub';
 import { StreamPosition } from '../positions/position.types';
 import { Field, ObjectType } from '@nestjs/graphql';
@@ -17,6 +18,15 @@ class HierarchyUpdate {
   positions!: StreamPosition[];
 }
 
+@ObjectType()
+class CreateStreamPayload {
+  @Field(() => Stream)
+  stream!: Stream;
+
+  @Field()
+  hostToken!: string;
+}
+
 @Resolver(() => Stream)
 export class StreamsResolver {
   constructor(
@@ -26,7 +36,7 @@ export class StreamsResolver {
 
   @Query(() => Stream)
   async stream(@Args('uuid') uuid: string) {
-    return await this.streams.getByUuid(uuid);
+    return toGraphQLStream(await this.streams.getByUuid(uuid));
   }
 
   @Query(() => [Stream])
@@ -34,12 +44,14 @@ export class StreamsResolver {
     @Args('sort', { nullable: true }) sort?: 'viewers' | 'recent',
     @Args('search', { nullable: true }) search?: string,
   ) {
-    return await this.streams.listLive(sort ?? 'viewers', search);
+    const result = await this.streams.listLive(sort ?? 'viewers', search);
+    return result.map(toGraphQLStream);
   }
 
   @Query(() => [Stream])
   async pastStreams(@Args('search', { nullable: true }) search?: string) {
-    return await this.streams.listPast('recent', search);
+    const result = await this.streams.listPast('recent', search);
+    return result.map(toGraphQLStream);
   }
 
   @Mutation(() => Stream)
@@ -55,7 +67,25 @@ export class StreamsResolver {
       anon_id && anon_text_color && anon_background_color
         ? { anon_id, anon_text_color, anon_background_color }
         : undefined;
-    return await this.streams.createStream({ title, description, thumbnailUrl, anon });
+    const created = await this.streams.createStream({ title, description, thumbnailUrl, anon });
+    return toGraphQLStream(created.stream);
+  }
+
+  @Mutation(() => CreateStreamPayload)
+  async createStreamWithHostToken(
+    @Args('title') title: string,
+    @Args('description') description: string,
+    @Args('thumbnailUrl', { nullable: true }) thumbnailUrl?: string,
+    @Args('anon_id', { nullable: true }) anon_id?: string,
+    @Args('anon_text_color', { nullable: true }) anon_text_color?: string,
+    @Args('anon_background_color', { nullable: true }) anon_background_color?: string,
+  ): Promise<CreateStreamPayload> {
+    const anon =
+      anon_id && anon_text_color && anon_background_color
+        ? { anon_id, anon_text_color, anon_background_color }
+        : undefined;
+    const created = await this.streams.createStream({ title, description, thumbnailUrl, anon });
+    return { stream: toGraphQLStream(created.stream), hostToken: created.hostToken };
   }
 
   @Mutation(() => Boolean)
@@ -74,6 +104,11 @@ export class StreamsResolver {
     return await this.streams.getPositions(uuid);
   }
 
+  @Mutation(() => Boolean)
+  async heartbeatStream(@Args('uuid') uuid: string, @Args('peerId') peerId: string) {
+    return await this.streams.heartbeat(uuid, peerId);
+  }
+
   // NOTE: auth guard will be added later; for now it's open to unblock UI wiring.
   @Mutation(() => Stream)
   @UseGuards(GqlJwtGuard)
@@ -85,7 +120,21 @@ export class StreamsResolver {
       .catch(() => {
         // keep stream in processing if it fails; error handling can be added later
       });
-    return updated;
+    return toGraphQLStream(updated);
+  }
+
+  @Mutation(() => Stream)
+  async endStreamAsHost(
+    @Args('uuid') uuid: string,
+    @Args('hostToken') hostToken: string,
+  ) {
+    const updated = await this.streams.endStreamAsHost(uuid, hostToken);
+    this.processing
+      .processStreamToPast(uuid)
+      .catch(() => {
+        // keep stream in processing if it fails; error handling can be added later
+      });
+    return toGraphQLStream(updated);
   }
 
   @Mutation(() => Stream)
@@ -94,7 +143,15 @@ export class StreamsResolver {
     @Args('uuid') uuid: string,
     @Args('fileUrls', { type: () => [String] }) fileUrls: string[],
   ) {
-    return await this.streams.markPast(uuid, fileUrls);
+    const updated = await this.streams.markPast(uuid, fileUrls);
+    return toGraphQLStream(updated);
+  }
+
+  @Mutation(() => Stream)
+  @UseGuards(GqlJwtGuard)
+  async removeStream(@Args('uuid') uuid: string) {
+    const updated = await this.streams.removeStream(uuid);
+    return toGraphQLStream(updated);
   }
 
   @Mutation(() => Stream)
@@ -102,7 +159,8 @@ export class StreamsResolver {
     @Args('uuid') uuid: string,
     @Args('thumbnailUrl', { nullable: true }) thumbnailUrl?: string,
   ) {
-    return await this.streams.setThumbnail(uuid, thumbnailUrl ?? null);
+    const updated = await this.streams.setThumbnail(uuid, thumbnailUrl ?? null);
+    return toGraphQLStream(updated);
   }
 
   @Subscription(() => Stream, {
@@ -118,6 +176,13 @@ export class StreamsResolver {
   hierarchyUpdated(@Args('uuid') uuid: string) {
     return pubsub.asyncIterableIterator(TOPIC_HIERARCHY_UPDATED);
   }
+}
+
+function toGraphQLStream(stream: PrismaStream): Stream {
+  return {
+    ...stream,
+    status: stream.status as StreamStatus,
+  };
 }
 
 
