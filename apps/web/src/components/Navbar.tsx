@@ -1,9 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { getToken, clearToken } from "@/lib/auth";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import BouncyClick from "@/components/ui/bouncy-click";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -25,8 +25,7 @@ function NavLink({
   label: string;
   isMobile?: boolean;
 }) {
-  const pathname = usePathname();
-  const active = pathname === href;
+  // active currently unused; styling can be added later
   return (
     <BouncyClick>
       <Button
@@ -34,9 +33,7 @@ function NavLink({
         asChild
         variant="ghost"
       >
-        <Link href={href} className="hover:text-blue-">
-          {label}
-        </Link>
+        <Link href={href}>{label}</Link>
       </Button>
     </BouncyClick>
   );
@@ -44,20 +41,12 @@ function NavLink({
 
 export function Navbar() {
   const searchParams = useSearchParams();
-  const pathname = usePathname();
-  const [loggedIn, setLoggedIn] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  useEffect(() => {
-    setLoggedIn(!!getToken());
-  }, [searchParams]);
+  // searchParams changes will re-render this component; derive logged-in state from token.
+  const loggedIn = !!getToken();
 
-  const loginHref = (() => {
-    const next = new URLSearchParams(searchParams.toString());
-    next.set("login", "true");
-    const qs = next.toString();
-    return qs ? `${pathname}?${qs}` : pathname;
-  })();
+  void searchParams;
 
   return (
     <nav className="border-b bg-background">
@@ -113,7 +102,6 @@ export function Navbar() {
                       size="sm"
                       onClick={() => {
                         clearToken();
-                        setLoggedIn(false);
                       }}
                     >
                       Logout

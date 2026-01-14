@@ -1,13 +1,13 @@
-'use client';
+"use client";
 
-import { useEffect, useMemo, useState } from 'react';
-import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { toast } from 'sonner';
+import { useEffect, useMemo, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { toast } from "sonner";
 
-import { makeGqlClient } from '@/lib/graphql';
-import { getToken, setToken } from '@/lib/auth';
+import { makeGqlClient } from "@/lib/graphql";
+import { getToken, setToken } from "@/lib/auth";
 
-import { Button } from '@/components/ui/button';
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -15,23 +15,23 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 export function LoginModal() {
   const searchParams = useSearchParams();
   const pathname = usePathname();
   const router = useRouter();
-  const show = searchParams.get('login') === 'true' && !getToken();
+  const show = searchParams.get("login") === "true" && !getToken();
 
-  const [username, setUsername] = useState('admin');
-  const [password, setPassword] = useState('change_me');
+  const [username, setUsername] = useState("admin");
+  const [password, setPassword] = useState("change_me");
   const [loading, setLoading] = useState(false);
 
   const closeUrl = useMemo(() => {
     const next = new URLSearchParams(searchParams.toString());
-    next.delete('login');
+    next.delete("login");
     const qs = next.toString();
     return qs ? `${pathname}?${qs}` : pathname;
   }, [pathname, searchParams]);
@@ -42,7 +42,7 @@ export function LoginModal() {
 
   useEffect(() => {
     // If user is already logged in and they hit a ?login=true URL, quietly remove it.
-    if (searchParams.get('login') === 'true' && getToken()) {
+    if (searchParams.get("login") === "true" && getToken()) {
       router.replace(closeUrl);
     }
   }, [closeUrl, router, searchParams]);
@@ -59,7 +59,8 @@ export function LoginModal() {
         <DialogHeader>
           <DialogTitle>Moderator Login</DialogTitle>
           <DialogDescription>
-            Accounts are manually seeded. Use the seeded credentials in your env.
+            Accounts are manually seeded. Use the seeded credentials in your
+            env.
           </DialogDescription>
         </DialogHeader>
 
@@ -86,7 +87,12 @@ export function LoginModal() {
         </div>
 
         <DialogFooter className="mt-4">
-          <Button variant="ghost" size="sm" onClick={closeModal} disabled={loading}>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={closeModal}
+            disabled={loading}
+          >
             Cancel
           </Button>
           <Button
@@ -105,25 +111,26 @@ export function LoginModal() {
                       }
                     }
                   `,
-                  { u: username, p: password },
+                  { u: username, p: password }
                 );
                 setToken(res.login.token);
-                toast.info('Logged in');
+                toast.info("Logged in");
                 router.push(closeUrl);
-              } catch (e: any) {
-                toast.warning(e?.response?.errors?.[0]?.message ?? 'Login failed');
+              } catch (e: unknown) {
+                const msg =
+                  (e as { response?: { errors?: Array<{ message?: string }> } })
+                    ?.response?.errors?.[0]?.message ?? "Login failed";
+                toast.warning(msg);
               } finally {
                 setLoading(false);
               }
             }}
             disabled={loading}
           >
-            {loading ? 'Logging in…' : 'Login'}
+            {loading ? "Logging in…" : "Login"}
           </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
   );
 }
-
-

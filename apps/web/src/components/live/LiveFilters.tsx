@@ -4,6 +4,7 @@ import { useTransition, useState } from "react";
 import { useRouter } from "next/navigation";
 import BouncyClick from "@/components/ui/bouncy-click";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -37,7 +38,12 @@ export function LiveFilters({ initialSort, initialQuery }: LiveFiltersProps) {
   return (
     <form onSubmit={handleSubmit} className="flex items-center gap-2">
       <div className="min-w-[150px]">
-        <Select value={sort} onValueChange={(value) => setSort(value as LiveFiltersProps["initialSort"])}>
+        <Select
+          value={sort}
+          onValueChange={(value) =>
+            setSort(value as LiveFiltersProps["initialSort"])
+          }
+        >
           <SelectTrigger aria-label="Sort streams">
             <SelectValue placeholder="Sort" />
           </SelectTrigger>
@@ -47,12 +53,12 @@ export function LiveFilters({ initialSort, initialQuery }: LiveFiltersProps) {
           </SelectContent>
         </Select>
       </div>
-      <input
+      <Input
         value={search}
         onChange={(event) => setSearch(event.target.value)}
         name="q"
         placeholder="Search title/description"
-        className="w-64 rounded-md border border-zinc-800 bg-transparent px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-zinc-500 focus:outline-none focus:ring-2 focus:ring-zinc-500"
+        className="w-64"
       />
       <BouncyClick>
         <Button type="submit" variant="outline" disabled={isPending}>
@@ -63,4 +69,3 @@ export function LiveFilters({ initialSort, initialQuery }: LiveFiltersProps) {
     </form>
   );
 }
-

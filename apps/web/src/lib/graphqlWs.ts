@@ -1,6 +1,6 @@
-import { createClient, Client } from 'graphql-ws';
-import { CONFIG } from './config';
-import { getToken } from './auth';
+import { createClient, Client } from "graphql-ws";
+import { CONFIG } from "./config";
+import { getToken } from "./auth";
 
 let _client: Client | null = null;
 
@@ -19,12 +19,12 @@ function getWsClient(): Client {
 }
 
 export function subscribe<
-  TData = any,
+  TData = unknown,
   TVariables extends Record<string, unknown> = Record<string, unknown>,
 >(
   args: { query: string; variables?: TVariables | null },
   onData: (data: TData) => void,
-  onError?: (err: unknown) => void,
+  onError?: (err: unknown) => void
 ) {
   const client = getWsClient();
   const dispose = client.subscribe<TData>(
@@ -35,9 +35,7 @@ export function subscribe<
       },
       error: (err) => onError?.(err),
       complete: () => {},
-    },
+    }
   );
   return dispose;
 }
-
-

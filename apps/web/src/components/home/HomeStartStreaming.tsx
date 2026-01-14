@@ -252,9 +252,9 @@ export function HomeStartStreaming() {
         const test =
           await navigator.mediaDevices.getUserMedia(mediaConstraints);
         test.getTracks().forEach((t) => t.stop());
-      } catch (e: any) {
+      } catch (e: unknown) {
         throw new Error(
-          e?.name === "NotAllowedError"
+          (e as { name?: string })?.name === "NotAllowedError"
             ? "Camera/mic permission denied."
             : "Failed to access selected devices."
         );
@@ -352,11 +352,12 @@ export function HomeStartStreaming() {
       }
 
       router.push(`/live/${uuid}`);
-    } catch (e: any) {
+    } catch (e: unknown) {
       setLoading(false);
       toast.warning(
-        e?.message ??
-          e?.response?.errors?.[0]?.message ??
+        (e as { message?: string })?.message ??
+          (e as { response?: { errors?: Array<{ message?: string }> } })
+            ?.response?.errors?.[0]?.message ??
           "Failed to start stream"
       );
     }

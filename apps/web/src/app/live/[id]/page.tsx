@@ -12,6 +12,15 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { CONFIG } from "@/lib/config";
 import { Trash2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 
 type Stream = {
   uuid: string;
@@ -101,10 +110,12 @@ export default function LiveStreamPage() {
         { uuid }
       )
       .then((r) => setStream(r.stream))
-      .catch((e: any) => {
-        setStreamError(
-          e?.response?.errors?.[0]?.message ?? "Stream not found (or removed)."
-        );
+      .catch((e: unknown) => {
+        const msg =
+          (e as { response?: { errors?: Array<{ message?: string }> } })
+            ?.response?.errors?.[0]?.message ??
+          "Stream not found (or removed).";
+        setStreamError(msg);
       });
 
     client
@@ -158,7 +169,12 @@ export default function LiveStreamPage() {
 
     window.addEventListener("beforeunload", sendBeaconLeave);
 
-    const disposeSignal = subscribe<{ signalReceived: any }>(
+    const disposeSignal = subscribe<{
+      signalReceived: {
+        fromPeerId: string;
+        payload: string;
+      };
+    }>(
       {
         query: `
           subscription Signal($streamUuid: String!, $peerId: String!) {
@@ -174,21 +190,23 @@ export default function LiveStreamPage() {
         variables: { streamUuid: uuid, peerId },
       },
       async (data) => {
-        const msg = data.signalReceived as {
-          fromPeerId: string;
-          payload: string;
-        };
-        const payload = JSON.parse(msg.payload) as any;
+        const msg = data.signalReceived;
+        const payload = JSON.parse(msg.payload) as unknown;
+        if (!payload || typeof payload !== "object") return;
+        const p = payload as Record<string, unknown>;
+        const type = p.type;
+        if (typeof type !== "string") return;
 
-        if (payload.type === "request-offer") {
+        if (type === "request-offer") {
           // Child is asking parent to initiate connection.
           await ensureOfferToPeer(msg.fromPeerId);
           return;
         }
 
-        if (payload.type === "offer") {
+        if (type === "offer") {
           const pc = getOrCreatePc(msg.fromPeerId, "receiver");
-          await pc.setRemoteDescription(payload.sdp);
+          if (p.sdp)
+            await pc.setRemoteDescription(p.sdp as RTCSessionDescriptionInit);
           const answer = await pc.createAnswer();
           await pc.setLocalDescription(answer);
           const gql = makeGqlClient(getToken() ?? undefined);
@@ -207,17 +225,18 @@ export default function LiveStreamPage() {
           return;
         }
 
-        if (payload.type === "answer") {
+        if (type === "answer") {
           const pc = pcByPeerRef.current.get(msg.fromPeerId);
-          if (pc) await pc.setRemoteDescription(payload.sdp);
+          if (pc && p.sdp)
+            await pc.setRemoteDescription(p.sdp as RTCSessionDescriptionInit);
           return;
         }
 
-        if (payload.type === "ice") {
+        if (type === "ice") {
           const pc = pcByPeerRef.current.get(msg.fromPeerId);
-          if (pc && payload.candidate) {
+          if (pc && p.candidate) {
             try {
-              await pc.addIceCandidate(payload.candidate);
+              await pc.addIceCandidate(p.candidate as RTCIceCandidateInit);
             } catch {
               // ignore race
             }
@@ -667,11 +686,9 @@ export default function LiveStreamPage() {
     if (localStreamRef.current) return;
     try {
       const raw = window.localStorage.getItem(`easystream:hostMedia:${uuid}`);
-      const parsed = raw
-        ? (JSON.parse(raw) as { video: any; audio: any })
-        : null;
+      const parsed = raw ? (JSON.parse(raw) as unknown) : null;
       const local = await navigator.mediaDevices.getUserMedia(
-        parsed ?? { video: true, audio: true }
+        (parsed as MediaStreamConstraints) ?? { video: true, audio: true }
       );
       localStreamRef.current = local;
       relaySourceStreamRef.current = local;
@@ -711,9 +728,9 @@ export default function LiveStreamPage() {
 
       // Now that we have a source stream, initiate offers to current children.
       syncConnections();
-    } catch (e: any) {
+    } catch (e: unknown) {
       toast.warning(
-        e?.name === "NotAllowedError"
+        (e as { name?: string })?.name === "NotAllowedError"
           ? "Camera/mic permission denied."
           : "Failed to start camera/mic."
       );
@@ -723,15 +740,17 @@ export default function LiveStreamPage() {
   return (
     <div className="mx-auto max-w-5xl px-4 py-8">
       {streamError ? (
-        <div className="rounded-lg border bg-white p-6 text-center">
-          <div className="text-lg font-semibold">Stream unavailable</div>
-          <div className="mt-2 text-sm text-zinc-600">{streamError}</div>
-          <div className="mt-4">
-            <Link className="text-sm font-medium underline" href="/browse-live">
-              Browse live streams
-            </Link>
-          </div>
-        </div>
+        <Card>
+          <CardHeader>
+            <CardTitle>Stream unavailable</CardTitle>
+            <CardDescription>{streamError}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button asChild variant="link" className="px-0">
+              <Link href="/browse-live">Browse live streams</Link>
+            </Button>
+          </CardContent>
+        </Card>
       ) : (
         <>
           <div className="mb-4 flex items-start justify-between gap-4">
@@ -747,8 +766,8 @@ export default function LiveStreamPage() {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <button
-                className="rounded-md border px-3 py-2 text-sm hover:bg-zinc-50"
+              <Button
+                variant="outline"
                 onClick={async () => {
                   try {
                     await navigator.clipboard.writeText(window.location.href);
@@ -759,10 +778,10 @@ export default function LiveStreamPage() {
                 }}
               >
                 Copy Link
-              </button>
+              </Button>
               {getToken() ? (
-                <button
-                  className="rounded-md bg-red-600 px-3 py-2 text-sm text-gray-200 hover:bg-red-500"
+                <Button
+                  variant="destructive"
                   onClick={async () => {
                     const client = makeGqlClient(getToken() ?? undefined);
                     if (isHost) {
@@ -786,10 +805,10 @@ export default function LiveStreamPage() {
                   }}
                 >
                   End Stream
-                </button>
+                </Button>
               ) : isHost && hostToken ? (
-                <button
-                  className="rounded-md bg-red-600 px-3 py-2 text-sm text-gray-200 hover:bg-red-500"
+                <Button
+                  variant="destructive"
                   onClick={async () => {
                     const client = makeGqlClient();
                     await stopRecordingAndUploadFinalClip();
@@ -809,175 +828,182 @@ export default function LiveStreamPage() {
                   }}
                 >
                   End Stream
-                </button>
+                </Button>
               ) : null}
             </div>
           </div>
 
           {stream?.status === "processing" ? (
-            <div className="rounded-lg border bg-white p-6 text-center">
-              <div className="text-lg font-semibold">Stream has ended</div>
-              <div className="mt-1 text-sm text-zinc-600">
-                Once it has finished processing, you will be redirected.
-              </div>
-              <div className="mt-3">
-                <Link
-                  className="text-sm font-medium underline"
-                  href={`/stream/${uuid}`}
-                >
-                  Go to replay page
-                </Link>
-              </div>
-            </div>
+            <Card>
+              <CardHeader>
+                <CardTitle>Stream has ended</CardTitle>
+                <CardDescription>
+                  Once it has finished processing, you will be redirected.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Button asChild variant="link" className="px-0">
+                  <Link href={`/stream/${uuid}`}>Go to replay page</Link>
+                </Button>
+              </CardContent>
+            </Card>
           ) : (
             <div className="grid gap-4 lg:grid-cols-[2fr_1fr]">
-              <div className="rounded-lg border bg-white p-4">
-                <div className="mb-2 text-sm font-medium">Live Stream</div>
-                {isHost ? (
-                  <div className="space-y-3">
-                    <div className="relative w-full">
-                      <div className="pointer-events-none relative overflow-hidden rounded-md border bg-black pb-[56.25%]">
-                        <video
-                          ref={localVideoRef}
-                          autoPlay
-                          playsInline
-                          muted
-                          className="absolute inset-0 h-full w-full object-cover"
-                        />
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm">Live Stream</CardTitle>
+                </CardHeader>
+                <CardContent className="pt-0">
+                  {isHost ? (
+                    <div className="space-y-3">
+                      <div className="relative w-full">
+                        <div className="pointer-events-none relative overflow-hidden rounded-md border bg-black pb-[56.25%]">
+                          <video
+                            ref={localVideoRef}
+                            autoPlay
+                            playsInline
+                            muted
+                            className="absolute inset-0 h-full w-full object-cover"
+                          />
+                        </div>
                       </div>
-                    </div>
-                    <button
-                      className="rounded-md bg-zinc-900 px-3 py-2 text-sm text-gray-200 hover:bg-zinc-800"
-                      onClick={() => startHosting()}
-                    >
-                      Start Camera + Broadcast
-                    </button>
-                    <div className="text-xs text-zinc-600">
-                      Waterfall connections are established via hierarchy
-                      updates + GraphQL signaling (STUN-only).
-                    </div>
-                    {myPosition ? (
-                      <div className="text-xs text-zinc-500">
-                        Stage {myPosition.stage} • children:{" "}
-                        {(myPosition.children ?? []).length}
+                      <Button onClick={() => startHosting()}>
+                        Start Camera + Broadcast
+                      </Button>
+                      <div className="text-xs text-zinc-600">
+                        Waterfall connections are established via hierarchy
+                        updates + GraphQL signaling (STUN-only).
                       </div>
-                    ) : null}
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    <div className="relative w-full">
-                      <div className="pointer-events-none relative overflow-hidden rounded-md border bg-black pb-[56.25%]">
-                        <video
-                          ref={remoteVideoRef}
-                          autoPlay
-                          playsInline
-                          className="absolute inset-0 h-full w-full object-cover"
-                        />
-                      </div>
-                    </div>
-                    <div className="text-xs text-zinc-600">
-                      Auto-connecting using the waterfall hierarchy (parents:{" "}
-                      {(myPosition?.parents ?? []).length}, stage{" "}
-                      {myPosition?.stage ?? "…"}).
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <div className="rounded-lg border bg-white p-4">
-                <div className="mb-2 text-sm font-medium">Live Chat</div>
-                <div className="mb-3 flex items-center gap-2">
-                  <input
-                    className="w-full rounded-md border px-3 py-2 text-sm"
-                    placeholder="Optional name"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                  />
-                  <button
-                    className="rounded-md border px-3 py-2 text-sm hover:bg-zinc-50"
-                    onClick={() => setAnonName(name)}
-                  >
-                    Set
-                  </button>
-                </div>
-
-                <div className="h-72 overflow-auto rounded-md border bg-zinc-50 p-2">
-                  {messages.length === 0 ? (
-                    <div className="p-2 text-sm text-zinc-600">
-                      No messages yet.
+                      {myPosition ? (
+                        <div className="text-xs text-zinc-500">
+                          Stage {myPosition.stage} • children:{" "}
+                          {(myPosition.children ?? []).length}
+                        </div>
+                      ) : null}
                     </div>
                   ) : (
-                    <div className="space-y-2">
-                      {messages
-                        .filter((m) => !m.removed)
-                        .map((m) => (
-                          <div key={m.uuid} className="group text-sm">
-                            <span className="font-medium">
-                              {m.name || "Anonymous"}
-                            </span>{" "}
-                            <span
-                              className="rounded px-1.5 py-0.5 text-xs"
-                              style={{
-                                color: m.anon_text_color,
-                                backgroundColor: m.anon_background_color,
-                              }}
-                            >
-                              {m.anon_id}
-                            </span>
-                            {getToken() ? (
-                              <button
-                                className="ml-2 inline-flex items-center gap-1 rounded border bg-white px-2 py-0.5 text-xs text-zinc-700 opacity-0 transition group-hover:opacity-100 hover:bg-zinc-50"
-                                title="Remove message"
-                                onClick={async () => {
-                                  try {
-                                    const client = makeGqlClient(
-                                      getToken() ?? undefined
-                                    );
-                                    await client.request(
-                                      `mutation($uuid:String!){removeChatMessage(uuid:$uuid){uuid removed}}`,
-                                      { uuid: m.uuid }
-                                    );
-                                    toast.info("Message removed");
-                                  } catch (e: any) {
-                                    toast.warning(
-                                      e?.response?.errors?.[0]?.message ??
-                                        "Failed to remove"
-                                    );
-                                  }
-                                }}
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                                Remove
-                              </button>
-                            ) : null}
-                            <div className="mt-0.5 text-zinc-800">
-                              {m.message}
-                            </div>
-                          </div>
-                        ))}
+                    <div className="space-y-3">
+                      <div className="relative w-full">
+                        <div className="pointer-events-none relative overflow-hidden rounded-md border bg-black pb-[56.25%]">
+                          <video
+                            ref={remoteVideoRef}
+                            autoPlay
+                            playsInline
+                            className="absolute inset-0 h-full w-full object-cover"
+                          />
+                        </div>
+                      </div>
+                      <div className="text-xs text-zinc-600">
+                        Auto-connecting using the waterfall hierarchy (parents:{" "}
+                        {(myPosition?.parents ?? []).length}, stage{" "}
+                        {myPosition?.stage ?? "…"}).
+                      </div>
                     </div>
                   )}
-                </div>
+                </CardContent>
+              </Card>
 
-                <div className="mt-3 flex items-center gap-2">
-                  <input
-                    className="w-full rounded-md border px-3 py-2 text-sm"
-                    placeholder="Write a message…"
-                    value={chatText}
-                    onChange={(e) => setChatText(e.target.value)}
-                  />
-                  <button
-                    className="rounded-md bg-zinc-900 px-3 py-2 text-sm text-gray-200 hover:bg-zinc-800"
-                    onClick={async () => {
-                      const msg = chatText.trim();
-                      if (!msg) return;
-                      setChatText("");
-                      const anon = getOrCreateAnonSession();
-                      const client = makeGqlClient();
-                      const res = await client.request<{
-                        sendChatMessage: ChatMessage;
-                      }>(
-                        `
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm">Live Chat</CardTitle>
+                </CardHeader>
+                <CardContent className="pt-0">
+                  <div className="mb-3 flex items-center gap-2">
+                    <Input
+                      placeholder="Optional name"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                    />
+                    <Button variant="outline" onClick={() => setAnonName(name)}>
+                      Set
+                    </Button>
+                  </div>
+
+                  <div className="h-72 overflow-auto rounded-md border bg-muted/30 p-2">
+                    {messages.length === 0 ? (
+                      <div className="p-2 text-sm text-muted-foreground">
+                        No messages yet.
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {messages
+                          .filter((m) => !m.removed)
+                          .map((m) => (
+                            <div key={m.uuid} className="group text-sm">
+                              <span className="font-medium">
+                                {m.name || "Anonymous"}
+                              </span>{" "}
+                              <span
+                                className="rounded px-1.5 py-0.5 text-xs"
+                                style={{
+                                  color: m.anon_text_color,
+                                  backgroundColor: m.anon_background_color,
+                                }}
+                              >
+                                {m.anon_id}
+                              </span>
+                              {getToken() ? (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="ml-2 h-7 px-2 py-0.5 text-xs opacity-0 transition group-hover:opacity-100"
+                                  title="Remove message"
+                                  onClick={async () => {
+                                    try {
+                                      const client = makeGqlClient(
+                                        getToken() ?? undefined
+                                      );
+                                      await client.request(
+                                        `mutation($uuid:String!){removeChatMessage(uuid:$uuid){uuid removed}}`,
+                                        { uuid: m.uuid }
+                                      );
+                                      toast.info("Message removed");
+                                    } catch (e: unknown) {
+                                      const msg =
+                                        (
+                                          e as {
+                                            response?: {
+                                              errors?: Array<{
+                                                message?: string;
+                                              }>;
+                                            };
+                                          }
+                                        )?.response?.errors?.[0]?.message ??
+                                        "Failed to remove";
+                                      toast.warning(msg);
+                                    }
+                                  }}
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                  Remove
+                                </Button>
+                              ) : null}
+                              <div className="mt-0.5 text-zinc-800">
+                                {m.message}
+                              </div>
+                            </div>
+                          ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="mt-3 flex items-center gap-2">
+                    <Input
+                      placeholder="Write a message…"
+                      value={chatText}
+                      onChange={(e) => setChatText(e.target.value)}
+                    />
+                    <Button
+                      onClick={async () => {
+                        const msg = chatText.trim();
+                        if (!msg) return;
+                        setChatText("");
+                        const anon = getOrCreateAnonSession();
+                        const client = makeGqlClient();
+                        const res = await client.request<{
+                          sendChatMessage: ChatMessage;
+                        }>(
+                          `
                           mutation Send(
                             $streamUuid: String!
                             $message: String!
@@ -1004,22 +1030,23 @@ export default function LiveStreamPage() {
                             }
                           }
                         `,
-                        {
-                          streamUuid: uuid,
-                          message: msg,
-                          name: name || undefined,
-                          anon_id: anon.anon_id,
-                          anon_text_color: anon.anon_text_color,
-                          anon_background_color: anon.anon_background_color,
-                        }
-                      );
-                      setMessages((prev) => [...prev, res.sendChatMessage]);
-                    }}
-                  >
-                    Send
-                  </button>
-                </div>
-              </div>
+                          {
+                            streamUuid: uuid,
+                            message: msg,
+                            name: name || undefined,
+                            anon_id: anon.anon_id,
+                            anon_text_color: anon.anon_text_color,
+                            anon_background_color: anon.anon_background_color,
+                          }
+                        );
+                        setMessages((prev) => [...prev, res.sendChatMessage]);
+                      }}
+                    >
+                      Send
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
             </div>
           )}
         </>

@@ -1,4 +1,4 @@
- "use client";
+"use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
@@ -6,7 +6,14 @@ import { makeGqlClient } from "@/lib/graphql";
 import Link from "next/link";
 import { getToken } from "@/lib/auth";
 import { toast } from "sonner";
-import { Trash2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 
 type Stream = {
   uuid: string;
@@ -50,10 +57,12 @@ export default function StreamReplayPage() {
         { uuid }
       )
       .then((r) => setStream(r.stream))
-      .catch((e: any) => {
-        setStreamError(
-          e?.response?.errors?.[0]?.message ?? "Stream not found (or removed)."
-        );
+      .catch((e: unknown) => {
+        const msg =
+          (e as { response?: { errors?: Array<{ message?: string }> } })
+            ?.response?.errors?.[0]?.message ??
+          "Stream not found (or removed).";
+        setStreamError(msg);
       });
 
     client
@@ -74,17 +83,18 @@ export default function StreamReplayPage() {
       .then((r) => setMessages(r.chatMessages));
   }, [uuid]);
 
-  useEffect(() => {
+  const activateIndex = (idx: number) => {
     // Stop all other players when active changes
     videoRefs.current.forEach((v, i) => {
       if (!v) return;
-      if (i !== activeIndex) {
+      if (i !== idx) {
         v.pause();
         v.currentTime = 0;
       }
     });
     setCurrentTime(0);
-  }, [activeIndex]);
+    setActiveIndex(idx);
+  };
 
   const baseOffsets = useMemo(() => {
     const offs: number[] = [];
@@ -113,15 +123,17 @@ export default function StreamReplayPage() {
   return (
     <div className="mx-auto max-w-5xl px-4 py-8">
       {streamError ? (
-        <div className="rounded-lg border bg-white p-6 text-center">
-          <div className="text-lg font-semibold">Stream unavailable</div>
-          <div className="mt-2 text-sm text-zinc-600">{streamError}</div>
-          <div className="mt-4">
-            <Link className="text-sm font-medium underline" href="/browse-past">
-              Browse past streams
-            </Link>
-          </div>
-        </div>
+        <Card>
+          <CardHeader>
+            <CardTitle>Stream unavailable</CardTitle>
+            <CardDescription>{streamError}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button asChild variant="link" className="px-0">
+              <Link href="/browse-past">Browse past streams</Link>
+            </Button>
+          </CardContent>
+        </Card>
       ) : (
         <>
           <div className="mb-4 flex items-start justify-between gap-4">
@@ -129,21 +141,18 @@ export default function StreamReplayPage() {
               <div className="text-2xl font-semibold">
                 {stream?.title ?? "Loading…"}
               </div>
-              <div className="mt-1 text-sm text-zinc-600">
+              <div className="mt-1 text-sm text-muted-foreground">
                 {stream?.description ?? ""}
               </div>
             </div>
-            <Link
-              className="rounded-md border px-3 py-2 text-sm hover:bg-zinc-50"
-              href={`/live/${uuid}`}
-            >
-              Back to Live Page
-            </Link>
+            <Button asChild variant="outline">
+              <Link href={`/live/${uuid}`}>Back to Live Page</Link>
+            </Button>
           </div>
           {getToken() ? (
             <div className="mb-4 flex justify-end">
-              <button
-                className="rounded-md bg-red-600 px-3 py-2 text-sm text-gray-200 hover:bg-red-500"
+              <Button
+                variant="destructive"
                 onClick={async () => {
                   try {
                     const client = makeGqlClient(getToken() ?? undefined);
@@ -152,127 +161,147 @@ export default function StreamReplayPage() {
                       { uuid }
                     );
                     toast.info("Stream removed");
-                  } catch (e) {
-                    toast.warning(
-                      e?.response?.errors?.[0]?.message ?? "Failed to remove stream"
-                    );
+                  } catch (e: unknown) {
+                    const msg =
+                      (
+                        e as {
+                          response?: { errors?: Array<{ message?: string }> };
+                        }
+                      )?.response?.errors?.[0]?.message ??
+                      "Failed to remove stream";
+                    toast.warning(msg);
                   }
                 }}
               >
                 Remove Stream
-              </button>
+              </Button>
             </div>
           ) : null}
 
           <div className="grid gap-4 lg:grid-cols-[2fr_1fr]">
-            <div className="rounded-lg border bg-white p-4">
-              <div className="mb-2 text-sm font-medium">Replay</div>
-              {stream?.removed ? (
-                <div className="text-sm text-zinc-600">
-                  This stream has been removed by a moderator.
-                  <div className="mt-2">
-                    <Link className="underline" href="/browse-past">
-                      Browse past streams
-                    </Link>
-                  </div>
-                </div>
-              ) : null}
-              {stream?.removed ? null : stream?.status !== "past" ? (
-                <div className="text-sm text-zinc-600">
-                  Stream is not processed yet (status: {stream?.status ?? "…"}).
-                </div>
-              ) : (stream.fileUrls?.length ?? 0) === 0 ? (
-                <div className="text-sm text-zinc-600">No files available.</div>
-              ) : (
-                <div className="space-y-4">
-                  <div className="flex flex-wrap gap-2">
-                    {stream.fileUrls.map((_, idx) => (
-                      <button
-                        key={idx}
-                        className={`rounded-md border px-3 py-1.5 text-sm ${
-                          idx === activeIndex
-                            ? "bg-zinc-900 text-gray-200"
-                            : "hover:bg-zinc-50"
-                        }`}
-                        onClick={() => setActiveIndex(idx)}
-                      >
-                        Part {idx + 1}
-                      </button>
-                    ))}
-                  </div>
-
-                  {stream.fileUrls.map((url, idx) => (
-                    <div
-                      key={url}
-                      className={idx === activeIndex ? "block" : "hidden"}
-                    >
-                      <div className="relative w-full">
-                        <div className="pointer-events-none relative overflow-hidden rounded-md border bg-black pb-[56.25%]">
-                          <video
-                            ref={(el) => {
-                              videoRefs.current[idx] = el;
-                            }}
-                            src={url}
-                            controls
-                            playsInline
-                            className="absolute inset-0 h-full w-full object-cover"
-                            onTimeUpdate={(e) => {
-                              if (idx !== activeIndex) return;
-                              setCurrentTime(
-                                (e.target as HTMLVideoElement).currentTime
-                              );
-                            }}
-                            onLoadedMetadata={(e) => {
-                              const duration = (e.target as HTMLVideoElement).duration || 0;
-                              setDurations((prev) => {
-                                const next = prev.slice();
-                                next[idx] = duration;
-                                return next;
-                              });
-                            }}
-                            onPlay={() => setActiveIndex(idx)}
-                          />
-                        </div>
-                      </div>
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm">Replay</CardTitle>
+              </CardHeader>
+              <CardContent className="pt-0">
+                {stream?.removed ? (
+                  <div className="text-sm text-muted-foreground">
+                    This stream has been removed by a moderator.
+                    <div className="mt-2">
+                      <Button asChild variant="link" className="px-0">
+                        <Link href="/browse-past">Browse past streams</Link>
+                      </Button>
                     </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div className="rounded-lg border bg-white p-4">
-              <div className="mb-2 text-sm font-medium">Chat Replay</div>
-              <div className="text-xs text-zinc-500">
-                Showing messages up to{" "}
-                {(baseOffsets[activeIndex] ?? 0) + currentTime}s.
-              </div>
-              <div className="mt-2 h-[28rem] overflow-auto rounded-md border bg-zinc-50 p-2">
-                {syncedMessages.length === 0 ? (
-                  <div className="p-2 text-sm text-zinc-600">No messages yet.</div>
+                  </div>
+                ) : null}
+                {stream?.removed ? null : stream?.status !== "past" ? (
+                  <div className="text-sm text-muted-foreground">
+                    Stream is not processed yet (status: {stream?.status ?? "…"}
+                    ).
+                  </div>
+                ) : (stream.fileUrls?.length ?? 0) === 0 ? (
+                  <div className="text-sm text-muted-foreground">
+                    No files available.
+                  </div>
                 ) : (
-                  <div className="space-y-2">
-                    {syncedMessages.map((m) => (
-                      <div key={m.uuid} className="group text-sm">
-                        <span className="font-medium">{m.name || "Anonymous"}</span>{" "}
-                        <span
-                          className="rounded px-1.5 py-0.5 text-xs"
-                          style={{
-                            color: m.anon_text_color,
-                            backgroundColor: m.anon_background_color,
-                          }}
+                  <div className="space-y-4">
+                    <div className="flex flex-wrap gap-2">
+                      {stream.fileUrls.map((_, idx) => (
+                        <Button
+                          key={idx}
+                          variant={idx === activeIndex ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => activateIndex(idx)}
                         >
-                          {m.anon_id}
-                        </span>
-                        <div className="text-xs text-slate-500">
-                          {new Date(m.create_date).toLocaleTimeString()}
+                          Part {idx + 1}
+                        </Button>
+                      ))}
+                    </div>
+
+                    {stream.fileUrls.map((url, idx) => (
+                      <div
+                        key={url}
+                        className={idx === activeIndex ? "block" : "hidden"}
+                      >
+                        <div className="relative w-full">
+                          <div className="pointer-events-none relative overflow-hidden rounded-md border bg-black pb-[56.25%]">
+                            <video
+                              ref={(el) => {
+                                videoRefs.current[idx] = el;
+                              }}
+                              src={url}
+                              controls
+                              playsInline
+                              className="absolute inset-0 h-full w-full object-cover"
+                              onTimeUpdate={(e) => {
+                                if (idx !== activeIndex) return;
+                                setCurrentTime(
+                                  (e.target as HTMLVideoElement).currentTime
+                                );
+                              }}
+                              onLoadedMetadata={(e) => {
+                                const duration =
+                                  (e.target as HTMLVideoElement).duration || 0;
+                                setDurations((prev) => {
+                                  const next = prev.slice();
+                                  next[idx] = duration;
+                                  return next;
+                                });
+                              }}
+                              onPlay={() => activateIndex(idx)}
+                            />
+                          </div>
                         </div>
-                        <div className="mt-0.5 text-slate-800">{m.message}</div>
                       </div>
                     ))}
                   </div>
                 )}
-              </div>
-            </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm">Chat Replay</CardTitle>
+                <CardDescription className="text-xs">
+                  Showing messages up to{" "}
+                  {(baseOffsets[activeIndex] ?? 0) + currentTime}s.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="pt-0">
+                <div className="h-[28rem] overflow-auto rounded-md border bg-muted/30 p-2">
+                  {syncedMessages.length === 0 ? (
+                    <div className="p-2 text-sm text-muted-foreground">
+                      No messages yet.
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {syncedMessages.map((m) => (
+                        <div key={m.uuid} className="group text-sm">
+                          <span className="font-medium">
+                            {m.name || "Anonymous"}
+                          </span>{" "}
+                          <span
+                            className="rounded px-1.5 py-0.5 text-xs"
+                            style={{
+                              color: m.anon_text_color,
+                              backgroundColor: m.anon_background_color,
+                            }}
+                          >
+                            {m.anon_id}
+                          </span>
+                          <div className="text-xs text-slate-500">
+                            {new Date(m.create_date).toLocaleTimeString()}
+                          </div>
+                          <div className="mt-0.5 text-slate-800">
+                            {m.message}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
           </div>
         </>
       )}

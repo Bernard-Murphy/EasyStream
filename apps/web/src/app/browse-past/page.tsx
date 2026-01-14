@@ -1,7 +1,10 @@
+import Image from "next/image";
 import Link from "next/link";
 import { makeGqlClient } from "@/lib/graphql";
 import BouncyClick from "@/components/ui/bouncy-click";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Card, CardContent } from "@/components/ui/card";
 import { Search } from "lucide-react";
 
 type Stream = {
@@ -43,11 +46,11 @@ export default async function BrowsePastPage({
           <div className="text-sm text-zinc-500">Replays (MVP listing).</div>
         </div>
         <form action="/browse-past" className="flex items-center gap-2">
-          <input
+          <Input
             name="q"
             defaultValue={q}
             placeholder="Search title/description"
-            className="w-64 rounded-md border px-3 py-2 text-sm"
+            className="w-64"
           />
           <BouncyClick>
             <Button variant="outline">
@@ -60,35 +63,43 @@ export default async function BrowsePastPage({
 
       <div className="grid gap-3">
         {data.pastStreams.length === 0 ? (
-          <div className="rounded-lg border bg-zinc-900 p-4 text-sm text-zinc-500">
-            No past streams yet.
-          </div>
+          <Card>
+            <CardContent className="text-sm text-muted-foreground">
+              No past streams yet.
+            </CardContent>
+          </Card>
         ) : (
           data.pastStreams.map((s) => (
-            <Link
-              key={s.uuid}
-              href={`/stream/${s.uuid}`}
-              className="flex gap-4 rounded-lg border bg-zinc-900 p-4 hover:bg-zinc-800 transition-all duration-200"
-            >
-              <div className="h-16 w-28 shrink-0 overflow-hidden rounded-md border bg-zinc-100">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                {s.thumbnailUrl ? (
-                  <img
-                    src={s.thumbnailUrl}
-                    alt=""
-                    className="h-full w-full object-cover"
-                  />
-                ) : null}
-              </div>
-              <div className="min-w-0">
-                <div className="truncate text-base font-semibold">
-                  {s.title}
-                </div>
-                <div className="mt-1 line-clamp-2 text-sm text-zinc-500">
-                  {s.description}
-                </div>
-              </div>
-            </Link>
+            <BouncyClick key={s.uuid}>
+              <Link href={`/stream/${s.uuid}`} className="block">
+                <Card className="hover:bg-accent/30 transition-colors">
+                  <CardContent className="pt-4">
+                    <div className="flex gap-4">
+                      <div className="relative h-16 w-28 shrink-0 overflow-hidden rounded-md border bg-muted">
+                        {s.thumbnailUrl ? (
+                          <Image
+                            src={s.thumbnailUrl}
+                            alt={`${s.title} thumbnail`}
+                            fill
+                            sizes="112px"
+                            className="object-cover"
+                            unoptimized
+                          />
+                        ) : null}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="truncate text-base font-semibold">
+                          {s.title}
+                        </div>
+                        <div className="mt-1 line-clamp-2 text-sm text-muted-foreground">
+                          {s.description}
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
+            </BouncyClick>
           ))
         )}
       </div>
