@@ -115,7 +115,7 @@ export default function StreamReplayPage() {
       {streamError ? (
         <div className="rounded-lg border bg-white p-6 text-center">
           <div className="text-lg font-semibold">Stream unavailable</div>
-          <div className="mt-2 text-sm text-slate-600">{streamError}</div>
+          <div className="mt-2 text-sm text-zinc-600">{streamError}</div>
           <div className="mt-4">
             <Link className="text-sm font-medium underline" href="/browse-past">
               Browse past streams
@@ -129,12 +129,12 @@ export default function StreamReplayPage() {
           <div className="text-2xl font-semibold">
             {stream?.title ?? "Loading…"}
           </div>
-          <div className="mt-1 text-sm text-slate-600">
+          <div className="mt-1 text-sm text-zinc-600">
             {stream?.description ?? ""}
           </div>
         </div>
         <Link
-          className="rounded-md border px-3 py-2 text-sm hover:bg-slate-50"
+          className="rounded-md border px-3 py-2 text-sm hover:bg-zinc-50"
           href={`/live/${uuid}`}
         >
           Back to Live Page
@@ -168,7 +168,7 @@ export default function StreamReplayPage() {
         <div className="rounded-lg border bg-white p-4">
           <div className="mb-2 text-sm font-medium">Replay</div>
           {stream?.removed ? (
-            <div className="text-sm text-slate-600">
+            <div className="text-sm text-zinc-600">
               This stream has been removed by a moderator.
               <div className="mt-2">
                 <Link className="underline" href="/browse-past">
@@ -178,11 +178,11 @@ export default function StreamReplayPage() {
             </div>
           ) : null}
           {stream?.removed ? null : stream?.status !== "past" ? (
-            <div className="text-sm text-slate-600">
+            <div className="text-sm text-zinc-600">
               Stream is not processed yet (status: {stream?.status ?? "…"}).
             </div>
           ) : (stream.fileUrls?.length ?? 0) === 0 ? (
-            <div className="text-sm text-slate-600">No files available.</div>
+            <div className="text-sm text-zinc-600">No files available.</div>
           ) : (
             <div className="space-y-4">
               <div className="flex flex-wrap gap-2">
@@ -191,8 +191,8 @@ export default function StreamReplayPage() {
                     key={idx}
                     className={`rounded-md border px-3 py-1.5 text-sm ${
                       idx === activeIndex
-                        ? "bg-slate-900 text-gray-200"
-                        : "hover:bg-slate-50"
+                        ? "bg-zinc-900 text-gray-200"
+                        : "hover:bg-zinc-50"
                     }`}
                     onClick={() => setActiveIndex(idx)}
                   >
@@ -238,13 +238,13 @@ export default function StreamReplayPage() {
 
         <div className="rounded-lg border bg-white p-4">
           <div className="mb-2 text-sm font-medium">Chat Replay</div>
-          <div className="text-xs text-slate-500">
+          <div className="text-xs text-zinc-500">
             Showing messages up to{" "}
             {(baseOffsets[activeIndex] ?? 0) + currentTime}s.
           </div>
-          <div className="mt-2 h-[28rem] overflow-auto rounded-md border bg-slate-50 p-2">
+          <div className="mt-2 h-[28rem] overflow-auto rounded-md border bg-zinc-50 p-2">
             {syncedMessages.length === 0 ? (
-              <div className="p-2 text-sm text-slate-600">No messages yet.</div>
+              <div className="p-2 text-sm text-zinc-600">No messages yet.</div>
             ) : (
               <div className="space-y-2">
                 {syncedMessages.map((m) => (
@@ -261,7 +261,7 @@ export default function StreamReplayPage() {
                     </span>
                     {getToken() ? (
                       <button
-                        className="ml-2 inline-flex items-center gap-1 rounded border bg-white px-2 py-0.5 text-xs text-slate-700 opacity-0 transition group-hover:opacity-100 hover:bg-slate-50"
+                        className="ml-2 inline-flex items-center gap-1 rounded border bg-white px-2 py-0.5 text-xs text-zinc-700 opacity-0 transition group-hover:opacity-100 hover:bg-zinc-50"
                         title="Remove message"
                         onClick={async () => {
                           try {
@@ -287,7 +287,7 @@ export default function StreamReplayPage() {
                         Remove
                       </button>
                     ) : null}
-                    <div className="mt-0.5 text-slate-800">{m.message}</div>
+                      <div className="mt-0.5 text-zinc-800">{m.message}</div>
                   </div>
                 ))}
               </div>

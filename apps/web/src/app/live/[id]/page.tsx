@@ -712,7 +712,7 @@ export default function LiveStreamPage() {
       {streamError ? (
         <div className="rounded-lg border bg-white p-6 text-center">
           <div className="text-lg font-semibold">Stream unavailable</div>
-          <div className="mt-2 text-sm text-slate-600">{streamError}</div>
+          <div className="mt-2 text-sm text-zinc-600">{streamError}</div>
           <div className="mt-4">
             <Link className="text-sm font-medium underline" href="/browse-live">
               Browse live streams
@@ -726,14 +726,14 @@ export default function LiveStreamPage() {
           <div className="text-2xl font-semibold">
             {stream?.title ?? "Loading…"}
           </div>
-          <div className="mt-1 text-sm text-slate-600">
+          <div className="mt-1 text-sm text-zinc-600">
             {stream?.description ?? ""}
           </div>
-          <div className="mt-1 text-xs text-slate-500">Stream ID: {uuid}</div>
+          <div className="mt-1 text-xs text-zinc-500">Stream ID: {uuid}</div>
         </div>
         <div className="flex items-center gap-2">
           <button
-            className="rounded-md border px-3 py-2 text-sm hover:bg-slate-50"
+            className="rounded-md border px-3 py-2 text-sm hover:bg-zinc-50"
             onClick={async () => {
               try {
                 await navigator.clipboard.writeText(window.location.href);
@@ -802,7 +802,7 @@ export default function LiveStreamPage() {
       {stream?.status === "processing" ? (
         <div className="rounded-lg border bg-white p-6 text-center">
           <div className="text-lg font-semibold">Stream has ended</div>
-          <div className="mt-1 text-sm text-slate-600">
+          <div className="mt-1 text-sm text-zinc-600">
             Once it has finished processing, you will be redirected.
           </div>
           <div className="mt-3">
@@ -828,17 +828,17 @@ export default function LiveStreamPage() {
                   className="w-full rounded-md border bg-black"
                 />
                 <button
-                  className="rounded-md bg-slate-900 px-3 py-2 text-sm text-gray-200 hover:bg-slate-800"
+                  className="rounded-md bg-zinc-900 px-3 py-2 text-sm text-gray-200 hover:bg-zinc-800"
                   onClick={() => startHosting()}
                 >
                   Start Camera + Broadcast
                 </button>
-                <div className="text-xs text-slate-600">
+                <div className="text-xs text-zinc-600">
                   Waterfall connections are established via hierarchy updates +
                   GraphQL signaling (STUN-only).
                 </div>
                 {myPosition ? (
-                  <div className="text-xs text-slate-500">
+                  <div className="text-xs text-zinc-500">
                     Stage {myPosition.stage} • children:{" "}
                     {(myPosition.children ?? []).length}
                   </div>
@@ -852,7 +852,7 @@ export default function LiveStreamPage() {
                   playsInline
                   className="w-full rounded-md border bg-black"
                 />
-                <div className="text-xs text-slate-600">
+                <div className="text-xs text-zinc-600">
                   Auto-connecting using the waterfall hierarchy (parents:{" "}
                   {(myPosition?.parents ?? []).length}, stage{" "}
                   {myPosition?.stage ?? "…"}).
@@ -871,16 +871,16 @@ export default function LiveStreamPage() {
                 onChange={(e) => setName(e.target.value)}
               />
               <button
-                className="rounded-md border px-3 py-2 text-sm hover:bg-slate-50"
+                className="rounded-md border px-3 py-2 text-sm hover:bg-zinc-50"
                 onClick={() => setAnonName(name)}
               >
                 Set
               </button>
             </div>
 
-            <div className="h-72 overflow-auto rounded-md border bg-slate-50 p-2">
+            <div className="h-72 overflow-auto rounded-md border bg-zinc-50 p-2">
               {messages.length === 0 ? (
-                <div className="p-2 text-sm text-slate-600">
+                <div className="p-2 text-sm text-zinc-600">
                   No messages yet.
                 </div>
               ) : (
@@ -903,7 +903,7 @@ export default function LiveStreamPage() {
                       </span>
                       {getToken() ? (
                         <button
-                          className="ml-2 inline-flex items-center gap-1 rounded border bg-white px-2 py-0.5 text-xs text-slate-700 opacity-0 transition group-hover:opacity-100 hover:bg-slate-50"
+                          className="ml-2 inline-flex items-center gap-1 rounded border bg-white px-2 py-0.5 text-xs text-zinc-700 opacity-0 transition group-hover:opacity-100 hover:bg-zinc-50"
                           title="Remove message"
                           onClick={async () => {
                             try {
@@ -924,7 +924,7 @@ export default function LiveStreamPage() {
                           Remove
                         </button>
                       ) : null}
-                      <div className="mt-0.5 text-slate-800">{m.message}</div>
+                      <div className="mt-0.5 text-zinc-800">{m.message}</div>
                     </div>
                   ))}
                 </div>
@@ -939,7 +939,7 @@ export default function LiveStreamPage() {
                 onChange={(e) => setChatText(e.target.value)}
               />
               <button
-                className="rounded-md bg-slate-900 px-3 py-2 text-sm text-gray-200 hover:bg-slate-800"
+                className="rounded-md bg-zinc-900 px-3 py-2 text-sm text-gray-200 hover:bg-zinc-800"
                 onClick={async () => {
                   const msg = chatText.trim();
                   if (!msg) return;

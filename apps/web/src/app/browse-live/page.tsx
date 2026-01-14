@@ -1,8 +1,7 @@
 import Link from "next/link";
 import { makeGqlClient } from "@/lib/graphql";
 import BouncyClick from "@/components/ui/bouncy-click";
-import { Button } from "@/components/ui/button";
-import { Search } from "lucide-react";
+import { LiveFilters } from "@/components/live/LiveFilters";
 
 type Stream = {
   uuid: string;
@@ -45,28 +44,7 @@ export default async function BrowseLivePage({
             Sorted by {sort === "recent" ? "most recent" : "viewer count"}.
           </div>
         </div>
-        <form action="/browse-live" className="flex items-center gap-2">
-          <select
-            name="sort"
-            defaultValue={sort}
-            className="rounded-md border px-3 py-2 text-sm bg-transparent"
-          >
-            <option value="viewers">Most viewers</option>
-            <option value="recent">Most recent</option>
-          </select>
-          <input
-            name="q"
-            defaultValue={q}
-            placeholder="Search title/description"
-            className="w-64 rounded-md border px-3 py-2 text-sm"
-          />
-          <BouncyClick>
-            <Button variant="outline">
-              <Search className="size-4 mr-2" />
-              Search
-            </Button>
-          </BouncyClick>
-        </form>
+        <LiveFilters initialSort={sort} initialQuery={q} />
       </div>
 
       <div className="grid gap-3">

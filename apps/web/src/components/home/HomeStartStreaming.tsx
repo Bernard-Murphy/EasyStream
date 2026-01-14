@@ -18,10 +18,17 @@ import {
   DialogTitle,
   DialogDescription,
   DialogFooter,
-  // DialogClose
+  DialogClose,
 } from "@/components/ui/dialog";
 import BouncyClick from "@/components/ui/bouncy-click";
 import Spinner from "@/components/ui/spinner";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 export function HomeStartStreaming() {
   const router = useRouter();
@@ -288,13 +295,13 @@ export function HomeStartStreaming() {
               Audio
             </label>
             {deviceLoading ? (
-              <div className="flex items-center gap-2 text-xs text-slate-600">
+              <div className="flex items-center gap-2 text-xs text-zinc-500">
                 <Spinner size="sm" /> Loading devices…
               </div>
             ) : null}
             <button
               type="button"
-              className="text-xs font-medium underline text-slate-700 hover:text-slate-900"
+              className="text-xs font-medium underline text-zinc-600 hover:text-zinc-900"
               onClick={resetDevicesAndPermissions}
               disabled={deviceLoading || loading}
             >
@@ -305,42 +312,44 @@ export function HomeStartStreaming() {
           {enableVideo ? (
             <div className="grid gap-2">
               <Label>Camera</Label>
-              <select
-                className="w-full rounded-md border px-3 py-2 text-sm"
+              <Select
                 value={videoDeviceId}
-                onChange={(e) => setVideoDeviceId(e.target.value)}
+                onValueChange={(value) => setVideoDeviceId(value)}
               >
-                {videoInputs.length === 0 ? (
-                  <option value="">Default camera</option>
-                ) : (
-                  videoInputs.map((d) => (
-                    <option key={d.deviceId} value={d.deviceId}>
+                <SelectTrigger aria-label="Camera selection">
+                  <SelectValue placeholder="Default camera" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">Default camera</SelectItem>
+                  {videoInputs.map((d) => (
+                    <SelectItem key={d.deviceId} value={d.deviceId}>
                       {d.label || "Camera"}
-                    </option>
-                  ))
-                )}
-              </select>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           ) : null}
 
           {enableAudio ? (
             <div className="grid gap-2">
               <Label>Microphone</Label>
-              <select
-                className="w-full rounded-md border px-3 py-2 text-sm"
+              <Select
                 value={audioDeviceId}
-                onChange={(e) => setAudioDeviceId(e.target.value)}
+                onValueChange={(value) => setAudioDeviceId(value)}
               >
-                {audioInputs.length === 0 ? (
-                  <option value="">Default microphone</option>
-                ) : (
-                  audioInputs.map((d) => (
-                    <option key={d.deviceId} value={d.deviceId}>
+                <SelectTrigger aria-label="Microphone selection">
+                  <SelectValue placeholder="Default microphone" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">Default microphone</SelectItem>
+                  {audioInputs.map((d) => (
+                    <SelectItem key={d.deviceId} value={d.deviceId}>
                       {d.label || "Microphone"}
-                    </option>
-                  ))
-                )}
-              </select>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           ) : null}
         </div>
