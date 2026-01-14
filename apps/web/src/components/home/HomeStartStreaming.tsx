@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { makeGqlClient } from "@/lib/graphql";
@@ -29,6 +29,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { AnimatePresence, motion } from "framer-motion";
+import { fade_out, normalize, transition_fast } from "@/lib/transitions";
 
 export function HomeStartStreaming() {
   const router = useRouter();
@@ -42,20 +44,29 @@ export function HomeStartStreaming() {
   const [audioInputs, setAudioInputs] = useState<MediaDeviceInfo[]>([]);
   const [enableVideo, setEnableVideo] = useState(true);
   const [enableAudio, setEnableAudio] = useState(true);
-  const [videoDeviceId, setVideoDeviceId] = useState<string>("");
-  const [audioDeviceId, setAudioDeviceId] = useState<string>("");
+  const DEFAULT_VIDEO_DEVICE = "default-camera";
+  const DEFAULT_AUDIO_DEVICE = "default-microphone";
+
+  const [videoDeviceId, setVideoDeviceId] =
+    useState<string>(DEFAULT_VIDEO_DEVICE);
+  const [audioDeviceId, setAudioDeviceId] =
+    useState<string>(DEFAULT_AUDIO_DEVICE);
   const [deviceRefreshNonce, setDeviceRefreshNonce] = useState(0);
 
   const mediaConstraints = useMemo(() => {
+    const normalizedVideoId =
+      videoDeviceId === DEFAULT_VIDEO_DEVICE ? "" : videoDeviceId;
+    const normalizedAudioId =
+      audioDeviceId === DEFAULT_AUDIO_DEVICE ? "" : audioDeviceId;
     const video =
-      enableVideo && videoDeviceId
-        ? ({ deviceId: { exact: videoDeviceId } } as const)
+      enableVideo && normalizedVideoId
+        ? ({ deviceId: { exact: normalizedVideoId } } as const)
         : enableVideo
           ? true
           : false;
     const audio =
-      enableAudio && audioDeviceId
-        ? ({ deviceId: { exact: audioDeviceId } } as const)
+      enableAudio && normalizedAudioId
+        ? ({ deviceId: { exact: normalizedAudioId } } as const)
         : enableAudio
           ? true
           : false;
@@ -82,9 +93,15 @@ export function HomeStartStreaming() {
         const auds = devices.filter((d) => d.kind === "audioinput");
         setVideoInputs(vids);
         setAudioInputs(auds);
-        if (!videoDeviceId && vids[0]?.deviceId)
+        if (
+          (!videoDeviceId || videoDeviceId === DEFAULT_VIDEO_DEVICE) &&
+          vids[0]?.deviceId
+        )
           setVideoDeviceId(vids[0].deviceId);
-        if (!audioDeviceId && auds[0]?.deviceId)
+        if (
+          (!audioDeviceId || audioDeviceId === DEFAULT_AUDIO_DEVICE) &&
+          auds[0]?.deviceId
+        )
           setAudioDeviceId(auds[0].deviceId);
       } catch {
         // If user denies permission, they can still attempt to proceed; /live will surface errors.
@@ -100,13 +117,17 @@ export function HomeStartStreaming() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, deviceRefreshNonce]);
 
+  const previewVideoRef = useRef<HTMLVideoElement | null>(null);
+  const previewStreamRef = useRef<MediaStream | null>(null);
+  const [audioLevel, setAudioLevel] = useState(0);
+
   const resetDevicesAndPermissions = async () => {
     // Note: browsers don't allow programmatic permission revocation; this just re-requests
     // and refreshes the enumerated device list + selections.
     setDeviceLoading(true);
     try {
-      setVideoDeviceId("");
-      setAudioDeviceId("");
+      setVideoDeviceId(DEFAULT_VIDEO_DEVICE);
+      setAudioDeviceId(DEFAULT_AUDIO_DEVICE);
       setVideoInputs([]);
       setAudioInputs([]);
       try {
@@ -126,6 +147,86 @@ export function HomeStartStreaming() {
       setDeviceLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (!open) {
+      previewStreamRef.current?.getTracks().forEach((t) => t.stop());
+      previewStreamRef.current = null;
+      setAudioLevel(0);
+      return;
+    }
+
+    const videoConstraint =
+      enableVideo && videoDeviceId !== DEFAULT_VIDEO_DEVICE
+        ? ({ deviceId: { exact: videoDeviceId } } as const)
+        : enableVideo
+          ? true
+          : false;
+    const audioConstraint =
+      enableAudio && audioDeviceId !== DEFAULT_AUDIO_DEVICE
+        ? ({ deviceId: { exact: audioDeviceId } } as const)
+        : enableAudio
+          ? true
+          : false;
+
+    let audioCtx: AudioContext | null = null;
+    let analyser: AnalyserNode | null = null;
+    const levelData = new Uint8Array(32);
+    let animationFrame: number | null = null;
+
+    navigator.mediaDevices
+      .getUserMedia({
+        video: videoConstraint,
+        audio: audioConstraint,
+      })
+      .then((stream) => {
+        previewStreamRef.current?.getTracks().forEach((t) => t.stop());
+        previewStreamRef.current = stream;
+        if (previewVideoRef.current) {
+          previewVideoRef.current.srcObject = stream;
+          previewVideoRef.current.play().catch(() => {
+            /* Autoplay blocked; ignore. */
+          });
+        }
+
+        if (enableAudio && audioConstraint) {
+          audioCtx = new AudioContext();
+          audioCtx.resume().catch(() => {
+            /* ignore */
+          });
+          const source = audioCtx.createMediaStreamSource(stream);
+          analyser = audioCtx.createAnalyser();
+          analyser.fftSize = 256;
+          source.connect(analyser);
+          const tick = () => {
+            if (!analyser) return;
+            analyser.getByteFrequencyData(levelData);
+            const level =
+              levelData.reduce((sum, value) => sum + value, 0) /
+              levelData.length;
+            setAudioLevel(level / 255);
+            animationFrame = requestAnimationFrame(tick);
+          };
+          tick();
+        } else {
+          setAudioLevel(0);
+        }
+      })
+      .catch(() => {
+        setAudioLevel(0);
+      });
+
+    return () => {
+      previewStreamRef.current?.getTracks().forEach((t) => t.stop());
+      previewStreamRef.current = null;
+      if (audioCtx) {
+        audioCtx.close();
+      }
+      if (animationFrame) {
+        cancelAnimationFrame(animationFrame);
+      }
+    };
+  }, [audioDeviceId, enableAudio, enableVideo, open, videoDeviceId]);
 
   const handleGoLive = async () => {
     setLoading(true);
@@ -252,24 +353,24 @@ export function HomeStartStreaming() {
 
       router.push(`/live/${uuid}`);
     } catch (e: any) {
+      setLoading(false);
       toast.warning(
         e?.message ??
           e?.response?.errors?.[0]?.message ??
           "Failed to start stream"
       );
-    } finally {
-      setLoading(false);
     }
   };
 
   return (
-    <Dialog
-    // open={open} onOpenChange={setOpen}
-    >
-      <DialogTrigger asChild>
-        <Button className="w-full">Start Streaming Now</Button>
-      </DialogTrigger>
-      <DialogContent className="p-0 sm:max-w-xl space-y-4">
+    <Dialog open={open} onOpenChange={setOpen}>
+      <BouncyClick className="w-full">
+        <DialogTrigger asChild>
+          <Button className="w-full">Start Streaming Now</Button>
+        </DialogTrigger>
+      </BouncyClick>
+
+      <DialogContent className="sm:max-w-xl space-y-4">
         <DialogHeader>
           <DialogTitle>Start a new stream</DialogTitle>
           <DialogDescription>
@@ -294,20 +395,67 @@ export function HomeStartStreaming() {
               />
               Audio
             </label>
-            {deviceLoading ? (
-              <div className="flex items-center gap-2 text-xs text-zinc-500">
-                <Spinner size="sm" /> Loading devices…
-              </div>
-            ) : null}
-            <button
-              type="button"
-              className="text-xs font-medium underline text-zinc-600 hover:text-zinc-900"
-              onClick={resetDevicesAndPermissions}
-              disabled={deviceLoading || loading}
-            >
-              Reset devices / permissions
-            </button>
+            <AnimatePresence mode="wait">
+              {deviceLoading ? (
+                <motion.div
+                  initial={fade_out}
+                  animate={normalize}
+                  exit={fade_out}
+                  transition={transition_fast}
+                  className="flex items-center gap-2 text-xs text-zinc-500"
+                  key="loading"
+                >
+                  <Spinner size="sm" /> Loading devices…
+                </motion.div>
+              ) : (
+                <BouncyClick key="reset">
+                  <motion.button
+                    initial={fade_out}
+                    animate={normalize}
+                    exit={fade_out}
+                    transition={transition_fast}
+                    type="button"
+                    className="text-xs font-medium underline text-zinc-600 hover:text-zinc-400 cursor-pointer"
+                    onClick={resetDevicesAndPermissions}
+                    disabled={deviceLoading || loading}
+                  >
+                    Reset devices / permissions
+                  </motion.button>
+                </BouncyClick>
+              )}
+            </AnimatePresence>
           </div>
+
+          {(enableVideo || enableAudio) && (
+            <div className="space-y-3">
+              {enableVideo ? (
+                <div className="rounded-md border border-zinc-700 bg-black">
+                  <div className="relative w-full">
+                    <div className="pointer-events-none relative overflow-hidden rounded-md bg-black pb-[56.25%]">
+                      <video
+                        ref={previewVideoRef}
+                        autoPlay
+                        playsInline
+                        muted
+                        className="absolute inset-0 h-full w-full object-cover"
+                      />
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+              {enableAudio ? (
+                <div className="space-y-1">
+                  <div className="text-xs text-zinc-400">Microphone level</div>
+                  <div className="h-2 w-full rounded-full bg-zinc-800">
+                    <div
+                      className="h-full rounded-full bg-zinc-500 transition-all"
+                      style={{ width: `${Math.min(100, audioLevel * 100)}%` }}
+                    />
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          )}
 
           {enableVideo ? (
             <div className="grid gap-2">
@@ -320,7 +468,9 @@ export function HomeStartStreaming() {
                   <SelectValue placeholder="Default camera" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Default camera</SelectItem>
+                  <SelectItem value={DEFAULT_VIDEO_DEVICE}>
+                    Default camera
+                  </SelectItem>
                   {videoInputs.map((d) => (
                     <SelectItem key={d.deviceId} value={d.deviceId}>
                       {d.label || "Camera"}
@@ -342,7 +492,9 @@ export function HomeStartStreaming() {
                   <SelectValue placeholder="Default microphone" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Default microphone</SelectItem>
+                  <SelectItem value={DEFAULT_AUDIO_DEVICE}>
+                    Default microphone
+                  </SelectItem>
                   {audioInputs.map((d) => (
                     <SelectItem key={d.deviceId} value={d.deviceId}>
                       {d.label || "Microphone"}
@@ -372,26 +524,28 @@ export function HomeStartStreaming() {
             placeholder="What is this stream about?"
           />
         </div>
-        <DialogFooter className="justify-end">
-          <BouncyClick>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setOpen(false)}
-              disabled={loading}
-            >
-              Cancel
-            </Button>
-          </BouncyClick>
+        <DialogFooter className="justify-end mb-0">
+          <DialogClose asChild>
+            <BouncyClick>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setOpen(false)}
+                disabled={loading}
+              >
+                Cancel
+              </Button>
+            </BouncyClick>
+          </DialogClose>
+
           <BouncyClick disabled={loading}>
             <Button disabled={loading} size="sm" onClick={handleGoLive}>
               {loading ? (
                 <>
                   <Spinner size="sm" />
-                  <span className="ml-2">Starting…</span>
                 </>
               ) : (
-                "Go Live"
+                "Next"
               )}
             </Button>
           </BouncyClick>
