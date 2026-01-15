@@ -61,6 +61,15 @@ export default function LiveStreamPage() {
   const [name, setName] = useState("");
   const [positions, setPositions] = useState<StreamPosition[]>([]);
 
+  // Host device controls
+  const [videoDevices, setVideoDevices] = useState<MediaDeviceInfo[]>([]);
+  const [audioDevices, setAudioDevices] = useState<MediaDeviceInfo[]>([]);
+  const [selectedVideoDevice, setSelectedVideoDevice] = useState<string>("");
+  const [selectedAudioDevice, setSelectedAudioDevice] = useState<string>("");
+  const [videoEnabled, setVideoEnabled] = useState(true);
+  const [audioEnabled, setAudioEnabled] = useState(true);
+  const [isHostReady, setIsHostReady] = useState(false);
+
   const isHost = useMemo(() => {
     if (typeof window === "undefined") return false;
     return window.localStorage.getItem(`easystream:host:${uuid}`) === "true";
@@ -392,6 +401,14 @@ export default function LiveStreamPage() {
     }
   }, [router, stream?.removed, stream?.status, uuid]);
 
+  // Auto-start hosting for hosts
+  useEffect(() => {
+    if (isHost && !isHostReady && stream && !streamError) {
+      startHosting();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isHost, isHostReady, stream, streamError]);
+
   useEffect(() => {
     // Whenever hierarchy changes, ensure we have the right upstream/downstream connections.
     syncConnections();
@@ -695,6 +712,25 @@ export default function LiveStreamPage() {
       relaySourceStreamRef.current = local;
       if (localVideoRef.current) localVideoRef.current.srcObject = local;
 
+      // Enumerate devices after getting permission
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const videoDevs = devices.filter((d) => d.kind === "videoinput");
+      const audioDevs = devices.filter((d) => d.kind === "audioinput");
+      setVideoDevices(videoDevs);
+      setAudioDevices(audioDevs);
+
+      // Set current devices
+      const videoTrack = local.getVideoTracks()[0];
+      const audioTrack = local.getAudioTracks()[0];
+      if (videoTrack) {
+        setSelectedVideoDevice(videoTrack.getSettings().deviceId || "");
+        setVideoEnabled(true);
+      }
+      if (audioTrack) {
+        setSelectedAudioDevice(audioTrack.getSettings().deviceId || "");
+        setAudioEnabled(true);
+      }
+
       // Recording: buffer blobs until ~CLIP_LENGTH_MB (default 50MB), then upload
       const clipLengthMb = Number(process.env.NEXT_PUBLIC_CLIP_LENGTH ?? 50);
       const clipBytes = clipLengthMb * 1024 * 1024;
@@ -729,11 +765,99 @@ export default function LiveStreamPage() {
 
       // Now that we have a source stream, initiate offers to current children.
       syncConnections();
+      setIsHostReady(true);
     } catch (e: unknown) {
       toast.warning(
         (e as { name?: string })?.name === "NotAllowedError"
           ? "Camera/mic permission denied."
           : "Failed to start camera/mic."
+      );
+    }
+  }
+
+  async function updateMediaStream() {
+    if (!isHost || !localStreamRef.current) return;
+
+    try {
+      const constraints: MediaStreamConstraints = {
+        video:
+          videoEnabled && selectedVideoDevice
+            ? { deviceId: { exact: selectedVideoDevice } }
+            : videoEnabled,
+        audio:
+          audioEnabled && selectedAudioDevice
+            ? { deviceId: { exact: selectedAudioDevice } }
+            : audioEnabled,
+      };
+
+      const newStream = await navigator.mediaDevices.getUserMedia(constraints);
+
+      // Stop old tracks
+      localStreamRef.current.getTracks().forEach((t) => t.stop());
+
+      // Update local stream ref and video element
+      localStreamRef.current = newStream;
+      relaySourceStreamRef.current = newStream;
+      if (localVideoRef.current) localVideoRef.current.srcObject = newStream;
+
+      // Update all peer connections with new tracks
+      const videoTrack = newStream.getVideoTracks()[0] || null;
+      const audioTrack = newStream.getAudioTracks()[0] || null;
+
+      for (const [peerId, pc] of pcByPeerRef.current.entries()) {
+        const role = pcRoleByPeerRef.current.get(peerId);
+        if (role !== "sender") continue;
+
+        const senders = pc.getSenders();
+        for (const sender of senders) {
+          if (sender.track?.kind === "video") {
+            await sender.replaceTrack(videoTrack);
+          } else if (sender.track?.kind === "audio") {
+            await sender.replaceTrack(audioTrack);
+          }
+        }
+      }
+
+      // Restart recorder if active
+      if (recorderRef.current?.state === "recording") {
+        recorderRef.current.stop();
+        const clipLengthMb = Number(process.env.NEXT_PUBLIC_CLIP_LENGTH ?? 50);
+        const clipBytes = clipLengthMb * 1024 * 1024;
+
+        const rec = new MediaRecorder(newStream, {
+          mimeType: "video/webm;codecs=vp8,opus",
+        });
+        recorderRef.current = rec;
+
+        rec.ondataavailable = async (ev) => {
+          if (!ev.data || ev.data.size === 0) return;
+          clipBufferRef.current.blobs.push(ev.data);
+          clipBufferRef.current.bytes += ev.data.size;
+
+          if (clipBufferRef.current.bytes >= clipBytes) {
+            const blob = new Blob(clipBufferRef.current.blobs, {
+              type: "video/webm",
+            });
+            clipBufferRef.current = { blobs: [], bytes: 0 };
+            await queueUpload(async () => {
+              await uploadBlob({
+                url: clipUploadUrl(uuid),
+                file: blob,
+                filename: `clip-${Date.now()}.webm`,
+                contentType: "video/webm",
+              });
+            });
+          }
+        };
+
+        rec.start(5000);
+      }
+
+      toast.success("Devices updated");
+    } catch (e: unknown) {
+      toast.warning(
+        "Failed to update devices: " +
+          ((e as Error)?.message ?? "Unknown error")
       );
     }
   }
@@ -882,9 +1006,90 @@ export default function LiveStreamPage() {
                           />
                         </div>
                       </div>
-                      <Button onClick={() => startHosting()}>
-                        Start Camera + Broadcast
-                      </Button>
+
+                      {isHostReady ? (
+                        <div className="space-y-3">
+                          <div className="flex items-center gap-2">
+                            <label className="flex items-center gap-2 text-sm">
+                              <input
+                                type="checkbox"
+                                checked={videoEnabled}
+                                onChange={async (e) => {
+                                  setVideoEnabled(e.target.checked);
+                                  // Will trigger update via effect
+                                }}
+                              />
+                              Video
+                            </label>
+                            <label className="flex items-center gap-2 text-sm">
+                              <input
+                                type="checkbox"
+                                checked={audioEnabled}
+                                onChange={async (e) => {
+                                  setAudioEnabled(e.target.checked);
+                                  // Will trigger update via effect
+                                }}
+                              />
+                              Audio
+                            </label>
+                          </div>
+
+                          {videoEnabled && videoDevices.length > 0 ? (
+                            <div className="space-y-1">
+                              <label className="text-xs text-muted-foreground">
+                                Camera
+                              </label>
+                              <select
+                                className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                                value={selectedVideoDevice}
+                                onChange={(e) =>
+                                  setSelectedVideoDevice(e.target.value)
+                                }
+                              >
+                                {videoDevices.map((d) => (
+                                  <option key={d.deviceId} value={d.deviceId}>
+                                    {d.label || "Camera"}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          ) : null}
+
+                          {audioEnabled && audioDevices.length > 0 ? (
+                            <div className="space-y-1">
+                              <label className="text-xs text-muted-foreground">
+                                Microphone
+                              </label>
+                              <select
+                                className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                                value={selectedAudioDevice}
+                                onChange={(e) =>
+                                  setSelectedAudioDevice(e.target.value)
+                                }
+                              >
+                                {audioDevices.map((d) => (
+                                  <option key={d.deviceId} value={d.deviceId}>
+                                    {d.label || "Microphone"}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          ) : null}
+
+                          <Button
+                            onClick={updateMediaStream}
+                            variant="outline"
+                            size="sm"
+                            className="w-full"
+                          >
+                            Apply Device Changes
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className="text-sm text-muted-foreground">
+                          Starting broadcast...
+                        </div>
+                      )}
                     </div>
                   ) : (
                     <div className="space-y-3">
