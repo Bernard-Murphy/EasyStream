@@ -375,7 +375,7 @@ export function HomeStartStreaming() {
         </DialogTrigger>
       </BouncyClick>
 
-      <DialogContent className="sm:max-w-xl space-y-4">
+      <DialogContent className="sm:max-w-xl space-y-4 max-h-[100vh] overflow-auto">
         <DialogHeader>
           <DialogTitle>Start a new stream</DialogTitle>
           <DialogDescription>

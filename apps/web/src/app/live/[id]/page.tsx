@@ -756,15 +756,11 @@ export default function LiveStreamPage() {
         <>
           <div className="mb-4 flex items-start justify-between gap-4">
             <div>
-              <div className="text-2xl font-semibold">
+              <div className="text-2xl font-semibold flex-1">
                 {stream?.title ?? "Loading…"}
               </div>
-
-              <div className="mt-1 text-xs text-zinc-500">
-                Stream ID: {uuid}
-              </div>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-col md:flex-row items-center gap-2">
               <BouncyClick>
                 <Button
                   variant="outline"
@@ -776,6 +772,7 @@ export default function LiveStreamPage() {
                       toast.warning("Failed to copy link");
                     }
                   }}
+                  size="sm"
                 >
                   Copy Link
                 </Button>
@@ -808,6 +805,7 @@ export default function LiveStreamPage() {
                         s ? { ...s, status: "processing" } : s
                       );
                     }}
+                    size="sm"
                   >
                     End Stream
                   </Button>
@@ -835,6 +833,7 @@ export default function LiveStreamPage() {
                         s ? { ...s, status: "processing" } : s
                       );
                     }}
+                    size="sm"
                   >
                     End Stream
                   </Button>
@@ -908,7 +907,7 @@ export default function LiveStreamPage() {
                 </CardContent>
               </Card>
 
-              <Card className="h-full flex flex-col pb-0">
+              <Card className="h-[50vh] md:h-full flex flex-col pb-0">
                 <CardContent className="pt-0 pb-6 flex-1 h-0 flex flex-col">
                   <h3 className="text-sm font-semibold mb-2">Cope Section</h3>
                   <div className="mb-3 flex items-center gap-2">
@@ -928,7 +927,7 @@ export default function LiveStreamPage() {
                     </BouncyClick>
                   </div>
 
-                  <div className="h-0 flex-1 max-h-[75vh] overflow-auto rounded-md border bg-muted/30 p-2">
+                  <div className="md:h-0 flex-1 max-h-[75vh] overflow-auto rounded-md border bg-muted/30 p-2">
                     {messages.length === 0 ? (
                       <div className="p-4 text-center text-sm text-muted-foreground">
                         No messages yet.

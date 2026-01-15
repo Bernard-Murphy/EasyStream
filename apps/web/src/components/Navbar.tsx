@@ -1,9 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, usePathname } from "next/navigation";
 import { getToken, clearToken } from "@/lib/auth";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import BouncyClick from "@/components/ui/bouncy-click";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -41,12 +41,16 @@ function NavLink({
 
 export function Navbar() {
   const searchParams = useSearchParams();
+  const pathname = usePathname();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   // searchParams changes will re-render this component; derive logged-in state from token.
   const loggedIn = !!getToken();
 
   void searchParams;
+  useEffect(() => {
+    setMobileMenuOpen(false);
+  }, [pathname]);
 
   return (
     <nav className="border-b bg-background">
@@ -73,7 +77,9 @@ export function Navbar() {
           </div>
 
           {/* Right side - Login/User Avatar (unchanged) */}
-          <div className="flex items-center space-x-4">
+          <div
+            className={`flex items-center justify-end ${loggedIn ? "space-x-4" : ""}`}
+          >
             {/* Mobile Menu Button */}
             <div className="md:hidden">
               <BouncyClick>

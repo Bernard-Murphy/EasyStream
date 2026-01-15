@@ -200,7 +200,7 @@ export default function StreamReplayPage() {
                   </div>
                 ) : (stream.fileUrls?.length ?? 0) === 0 ? (
                   <div className="text-sm text-muted-foreground">
-                    No files available.
+                    Media processing. Please come back later.
                   </div>
                 ) : (
                   <div className="space-y-4">
@@ -266,10 +266,10 @@ export default function StreamReplayPage() {
               </CardContent>
             </Card>
 
-            <Card className="h-full flex flex-col">
+            <Card className="h-[50vh] md:h-full flex flex-col ">
               <CardContent className="pt-0  flex-1 h-0 flex flex-col">
                 <h3 className="text-sm font-semibold mb-2">Cope Replay</h3>
-                <div className="h-0 flex-1 max-h-[75vh] overflow-auto rounded-md border bg-muted/30 p-2">
+                <div className="md:h-0 flex-1 max-h-[75vh] overflow-auto rounded-md border bg-muted/30 p-2">
                   {syncedMessages.length === 0 ? (
                     <div className="p-4 text-sm text-muted-foreground text-center">
                       No messages yet.
