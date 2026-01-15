@@ -31,6 +31,7 @@ import {
 } from "@/components/ui/select";
 import { AnimatePresence, motion } from "framer-motion";
 import { fade_out, normalize, transition_fast } from "@/lib/transitions";
+import { RadioTower } from "lucide-react";
 
 export function HomeStartStreaming() {
   const router = useRouter();
@@ -367,7 +368,10 @@ export function HomeStartStreaming() {
     <Dialog open={open} onOpenChange={setOpen}>
       <BouncyClick className="w-full">
         <DialogTrigger asChild>
-          <Button className="w-full">Start Streaming Now</Button>
+          <Button className="w-full">
+            <RadioTower className="size-4 mr-2" />
+            Go Live
+          </Button>
         </DialogTrigger>
       </BouncyClick>
 
@@ -546,7 +550,7 @@ export function HomeStartStreaming() {
                   <Spinner size="sm" />
                 </>
               ) : (
-                "Next"
+                "Start"
               )}
             </Button>
           </BouncyClick>

@@ -121,7 +121,7 @@ export default function StreamReplayPage() {
   }, [activeIndex, baseOffsets, currentTime, messages, stream]);
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-8">
+    <div className="mx-auto max-w-full px-4 py-8 flex flex-col min-h-[90vh]">
       {streamError ? (
         <Card>
           <CardHeader>
@@ -141,9 +141,7 @@ export default function StreamReplayPage() {
               <div className="text-2xl font-semibold">
                 {stream?.title ?? "Loading…"}
               </div>
-              <div className="mt-1 text-sm text-muted-foreground">
-                {stream?.description ?? ""}
-              </div>
+              <div className="mt-1 text-sm text-muted-foreground">Replay</div>
             </div>
             <Button asChild variant="outline">
               <Link href={`/live/${uuid}`}>Back to Live Page</Link>
@@ -178,11 +176,8 @@ export default function StreamReplayPage() {
             </div>
           ) : null}
 
-          <div className="grid gap-4 lg:grid-cols-[2fr_1fr]">
+          <div className="grid gap-4 lg:grid-cols-[2fr_1fr] flex-1">
             <Card>
-              <CardHeader>
-                <CardTitle className="text-sm">Replay</CardTitle>
-              </CardHeader>
               <CardContent className="pt-0">
                 {stream?.removed ? (
                   <div className="text-sm text-muted-foreground">
@@ -223,52 +218,46 @@ export default function StreamReplayPage() {
                         key={url}
                         className={idx === activeIndex ? "block" : "hidden"}
                       >
-                        <div className="relative w-full">
-                          <div className="pointer-events-none relative overflow-hidden rounded-md border bg-black pb-[56.25%]">
-                            <video
-                              ref={(el) => {
-                                videoRefs.current[idx] = el;
-                              }}
-                              src={url}
-                              controls
-                              playsInline
-                              className="absolute inset-0 h-full w-full object-cover"
-                              onTimeUpdate={(e) => {
-                                if (idx !== activeIndex) return;
-                                setCurrentTime(
-                                  (e.target as HTMLVideoElement).currentTime
-                                );
-                              }}
-                              onLoadedMetadata={(e) => {
-                                const duration =
-                                  (e.target as HTMLVideoElement).duration || 0;
-                                setDurations((prev) => {
-                                  const next = prev.slice();
-                                  next[idx] = duration;
-                                  return next;
-                                });
-                              }}
-                              onPlay={() => activateIndex(idx)}
-                            />
-                          </div>
-                        </div>
+                        <video
+                          ref={(el) => {
+                            videoRefs.current[idx] = el;
+                          }}
+                          src={url}
+                          controls
+                          playsInline
+                          onTimeUpdate={(e) => {
+                            if (idx !== activeIndex) return;
+                            setCurrentTime(
+                              (e.target as HTMLVideoElement).currentTime
+                            );
+                          }}
+                          className="inset-0 h-full w-full rounded-md object-cover"
+                          onLoadedMetadata={(e) => {
+                            const duration =
+                              (e.target as HTMLVideoElement).duration || 0;
+                            setDurations((prev) => {
+                              const next = prev.slice();
+                              next[idx] = duration;
+                              return next;
+                            });
+                          }}
+                          onPlay={() => activateIndex(idx)}
+                        />
                       </div>
                     ))}
                   </div>
                 )}
+                <hr className="my-4 border-input" />
+                <div className="text-sm text-zinc-300">
+                  {stream?.description ?? ""}
+                </div>
               </CardContent>
             </Card>
 
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-sm">Chat Replay</CardTitle>
-                <CardDescription className="text-xs">
-                  Showing messages up to{" "}
-                  {(baseOffsets[activeIndex] ?? 0) + currentTime}s.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="pt-0">
-                <div className="h-[28rem] overflow-auto rounded-md border bg-muted/30 p-2">
+            <Card className="h-full flex flex-col">
+              <CardContent className="pt-0 pb-6 flex-1 h-0 flex flex-col">
+                <h3 className="text-sm font-semibold mb-2">Chat Replay</h3>
+                <div className="h-full max-h-[75vh] overflow-auto rounded-md border bg-muted/30 p-2">
                   {syncedMessages.length === 0 ? (
                     <div className="p-2 text-sm text-muted-foreground">
                       No messages yet.

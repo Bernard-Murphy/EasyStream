@@ -738,7 +738,7 @@ export default function LiveStreamPage() {
   }
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-8">
+    <div className="mx-auto w-full px-4 py-8">
       {streamError ? (
         <Card>
           <CardHeader>
@@ -758,9 +758,7 @@ export default function LiveStreamPage() {
               <div className="text-2xl font-semibold">
                 {stream?.title ?? "Loading…"}
               </div>
-              <div className="mt-1 text-sm text-zinc-600">
-                {stream?.description ?? ""}
-              </div>
+
               <div className="mt-1 text-xs text-zinc-500">
                 Stream ID: {uuid}
               </div>
@@ -900,6 +898,10 @@ export default function LiveStreamPage() {
                       </div>
                     </div>
                   )}
+                  <hr className="my-4 border-input" />
+                  <div className="text-sm text-zinc-300">
+                    {stream?.description ?? ""}
+                  </div>
                 </CardContent>
               </Card>
 

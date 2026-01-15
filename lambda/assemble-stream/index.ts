@@ -194,7 +194,7 @@ async function runFfmpegConcat(listPath: string, outPath: string) {
 // AWS Lambda handler
 export async function handler(event: AssembleRequest): Promise<AssembleResult> {
   const bucket = requireEnv("STORJ_BUCKET");
-
+  console.log("ASSEMBLING STREAM");
   const clipKeys =
     event.clipKeys ??
     (event.clipUrls ?? [])
@@ -237,6 +237,7 @@ export async function handler(event: AssembleRequest): Promise<AssembleResult> {
 
   for (const group of plan.groups) {
     const partKey = `${outputPrefix}/${group.partIndex}-${randomUUID()}.webm`;
+    console.log("PART KEY", partKey);
     const outPath = path.join(tmpRoot, `part-${group.partIndex}.webm`);
     const listPath = path.join(tmpRoot, `concat-${group.partIndex}.txt`);
 
@@ -278,6 +279,11 @@ export async function handler(event: AssembleRequest): Promise<AssembleResult> {
     }
     deletedClipKeys.push(...clipKeys);
   }
-
+  console.log("STREAM ASSEMBLED", {
+    streamUuid: event.streamUuid,
+    assembled,
+    deletedClipKeys,
+    plan,
+  });
   return { streamUuid: event.streamUuid, assembled, deletedClipKeys, plan };
 }

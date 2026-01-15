@@ -24,16 +24,17 @@ function FrozenRouter({ children }: { children: React.ReactNode }) {
   );
 }
 
-export function PageTransitions({ children }: { children: React.ReactNode }) {
+interface PageTransitionProps {
+  children: React.ReactNode;
+}
+
+export function PageTransition({ children }: PageTransitionProps) {
   const pathname = usePathname();
 
   return (
-    <AnimatePresence mode="wait">
+    <AnimatePresence mode="wait" initial={false}>
       <motion.div
         key={pathname}
-        // Ensure there's no "flash of visible content" before Framer applies initial.
-        // This also matches SSR markup for smoother hydration.
-        style={{ opacity: 0 }}
         initial={fade_out}
         animate={normalize}
         exit={fade_out_scale_1}

@@ -5,7 +5,7 @@ import "./globals.css";
 import { Navbar } from "@/components/Navbar";
 import { LoginModal } from "@/components/LoginModal";
 import { Toaster } from "@/components/ui/sonner";
-import { PageTransitions } from "@/components/PageTransitions";
+import { PageTransition } from "@/components/PageTransitions";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -39,7 +39,7 @@ export default function RootLayout({
           <LoginModal />
         </Suspense>
         <Toaster />
-        <PageTransitions>{children}</PageTransitions>
+        <PageTransition>{children}</PageTransition>
       </body>
     </html>
   );
