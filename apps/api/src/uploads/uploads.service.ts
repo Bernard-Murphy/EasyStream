@@ -14,6 +14,19 @@ export class UploadsService {
     return `${prefix}/${Date.now()}-${randomUUID()}${ext}`;
   }
 
+  getStorjUrlFromKey(key: string): string | null {
+    const assetUrl = this.config.get<string>('STORJ_ASSET_URL');
+    if (assetUrl) {
+      return `${assetUrl.replace(/\/$/, '')}/${key}`;
+    }
+    const endpoint = this.config.get<string>('STORJ_ENDPOINT');
+    const bucket = this.config.get<string>('STORJ_BUCKET');
+    if (!endpoint || !bucket) {
+      return null;
+    }
+    return `${endpoint.replace(/\/$/, '')}/${bucket}/${key}`;
+  }
+
   async putBuffer(params: {
     key: string;
     contentType: string;
@@ -23,10 +36,6 @@ export class UploadsService {
     const endpoint = this.config.get<string>('STORJ_ENDPOINT');
     const accessKey = this.config.get<string>('STORJ_SECRET_ACCESS_ID');
     const secretKey = this.config.get<string>('STORJ_SECRET_ACCESS_KEY');
-    console.log('bucket', bucket);
-    console.log('endpoint', endpoint);
-    console.log('accessKey', accessKey);
-    console.log('secretKey', secretKey);
 
     if (bucket && endpoint && accessKey && secretKey) {
       await s3
@@ -38,7 +47,9 @@ export class UploadsService {
         })
         .promise();
 
-      const url = `${endpoint.replace(/\/$/, '')}/${bucket}/${params.key}`;
+      const url =
+        this.getStorjUrlFromKey(params.key) ??
+        `${endpoint.replace(/\/$/, '')}/${bucket}/${params.key}`;
       return { url, key: params.key };
     }
 
@@ -59,10 +70,6 @@ export class UploadsService {
     const endpoint = this.config.get<string>('STORJ_ENDPOINT');
     const accessKey = this.config.get<string>('STORJ_SECRET_ACCESS_ID');
     const secretKey = this.config.get<string>('STORJ_SECRET_ACCESS_KEY');
-    console.log('bucket', bucket);
-    console.log('endpoint', endpoint);
-    console.log('accessKey', accessKey);
-    console.log('secretKey', secretKey);
 
     if (bucket && endpoint && accessKey && secretKey) {
       await s3
@@ -74,7 +81,9 @@ export class UploadsService {
         })
         .promise();
 
-      const url = `${endpoint.replace(/\/$/, '')}/${bucket}/${params.key}`;
+      const url =
+        this.getStorjUrlFromKey(params.key) ??
+        `${endpoint.replace(/\/$/, '')}/${bucket}/${params.key}`;
       return { url, key: params.key };
     }
 
@@ -98,6 +107,12 @@ export class UploadsService {
 
     const endpoint = this.config.get<string>('STORJ_ENDPOINT');
     const bucket = this.config.get<string>('STORJ_BUCKET');
+    const assetUrl = this.config.get<string>('STORJ_ASSET_URL');
+    if (assetUrl) {
+      const withoutSlash = assetUrl.replace(/\/$/, '');
+      const prefix = `${withoutSlash}/`;
+      if (url.startsWith(prefix)) return url.slice(prefix.length);
+    }
     if (endpoint && bucket) {
       const base = `${endpoint.replace(/\/$/, '')}/${bucket}/`;
       if (url.startsWith(base)) return url.slice(base.length);

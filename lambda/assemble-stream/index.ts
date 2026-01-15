@@ -124,8 +124,23 @@ function requireEnv(name: string): string {
   return v;
 }
 
+function buildStorjUrl(key: string) {
+  const assetUrl = process.env.STORJ_ASSET_URL;
+  if (assetUrl) {
+    return `${assetUrl.replace(/\/$/, "")}/${key}`;
+  }
+  const endpoint = requireEnv("STORJ_ENDPOINT");
+  const bucket = requireEnv("STORJ_BUCKET");
+  return `${endpoint.replace(/\/$/, "")}/${bucket}/${key}`;
+}
+
 function extractKeyFromUrl(url: string): string | null {
-  // For Storj: ${STORJ_ENDPOINT}/${STORJ_BUCKET}/${key}
+  // For Storj: either ${STORJ_ASSET_URL}/${key} or ${STORJ_ENDPOINT}/${STORJ_BUCKET}/${key}
+  const assetUrl = process.env.STORJ_ASSET_URL;
+  if (assetUrl) {
+    const prefix = `${assetUrl.replace(/\/$/, "")}/`;
+    if (url.startsWith(prefix)) return url.slice(prefix.length);
+  }
   const endpoint = process.env.STORJ_ENDPOINT;
   const bucket = process.env.STORJ_BUCKET;
   if (!endpoint || !bucket) return null;
@@ -257,8 +272,7 @@ export async function handler(event: AssembleRequest): Promise<AssembleResult> {
     await runFfmpegConcat(listPath, outPath);
     await uploadFile(bucket, partKey, outPath);
 
-    const endpoint = requireEnv("STORJ_ENDPOINT").replace(/\/$/, "");
-    const url = `${endpoint}/${bucket}/${partKey}`;
+    const url = buildStorjUrl(partKey);
     assembled.push({
       partIndex: group.partIndex,
       key: partKey,

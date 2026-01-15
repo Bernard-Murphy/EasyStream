@@ -22,6 +22,14 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import BouncyClick from "@/components/ui/bouncy-click";
+import { AnimatePresence, motion } from "framer-motion";
+import {
+  fade_out,
+  fade_out_scale_1,
+  normalize,
+  transition_fast,
+} from "@/lib/transitions";
+import Spinner from "@/components/ui/spinner";
 
 type Stream = {
   uuid: string;
@@ -60,6 +68,7 @@ export default function LiveStreamPage() {
   const [chatText, setChatText] = useState("");
   const [name, setName] = useState("");
   const [positions, setPositions] = useState<StreamPosition[]>([]);
+  const [isEndingStream, setIsEndingStream] = useState<boolean>(false);
 
   // Host device controls
   const [videoDevices, setVideoDevices] = useState<MediaDeviceInfo[]>([]);
@@ -864,362 +873,457 @@ export default function LiveStreamPage() {
 
   return (
     <div className="mx-auto w-full px-4 py-8 flex flex-col min-h-[90vh]">
-      {streamError ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>Stream unavailable</CardTitle>
-            <CardDescription>{streamError}</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Button asChild variant="link" className="px-0">
-              <Link href="/browse-live">Browse live streams</Link>
-            </Button>
-          </CardContent>
-        </Card>
-      ) : (
-        <>
-          <div className="mb-4 flex items-start justify-between gap-4">
-            <div>
-              <div className="text-2xl font-semibold flex-1">
-                {stream?.title ?? "Loading…"}
-              </div>
-            </div>
-            <div className="flex flex-col md:flex-row items-center gap-2">
-              <BouncyClick>
-                <Button
-                  variant="outline"
-                  onClick={async () => {
-                    try {
-                      await navigator.clipboard.writeText(window.location.href);
-                      toast.info("Link copied");
-                    } catch {
-                      toast.warning("Failed to copy link");
-                    }
-                  }}
-                  size="sm"
-                >
-                  Copy Link
-                </Button>
-              </BouncyClick>
-
-              {getToken() ? (
-                <BouncyClick>
-                  <Button
-                    variant="destructive"
-                    onClick={async () => {
-                      const client = makeGqlClient(getToken() ?? undefined);
-                      if (isHost) {
-                        await stopRecordingAndUploadFinalClip();
-                        await uploadQueueRef.current;
-                        try {
-                          localStreamRef.current
-                            ?.getTracks()
-                            .forEach((t) => t.stop());
-                        } catch {
-                          // ignore
-                        }
-                      }
-                      await client.request(
-                        `mutation($uuid:String!){endStream(uuid:$uuid){uuid status}}`,
-                        {
-                          uuid,
-                        }
-                      );
-                      setStream((s) =>
-                        s ? { ...s, status: "processing" } : s
-                      );
-                    }}
-                    size="sm"
-                  >
-                    End Stream
-                  </Button>
-                </BouncyClick>
-              ) : isHost && hostToken ? (
-                <BouncyClick>
-                  <Button
-                    variant="destructive"
-                    onClick={async () => {
-                      const client = makeGqlClient();
-                      await stopRecordingAndUploadFinalClip();
-                      await uploadQueueRef.current;
-                      try {
-                        localStreamRef.current
-                          ?.getTracks()
-                          .forEach((t) => t.stop());
-                      } catch {
-                        // ignore
-                      }
-                      await client.request(
-                        `mutation($uuid:String!,$hostToken:String!){endStreamAsHost(uuid:$uuid,hostToken:$hostToken){uuid status}}`,
-                        { uuid, hostToken }
-                      );
-                      setStream((s) =>
-                        s ? { ...s, status: "processing" } : s
-                      );
-                    }}
-                    size="sm"
-                  >
-                    End Stream
-                  </Button>
-                </BouncyClick>
-              ) : null}
-            </div>
-          </div>
-
-          {stream?.status === "processing" ? (
+      <AnimatePresence mode="wait" initial={false}>
+        <motion.div
+          key={streamError ? "error" : "stream"}
+          initial={fade_out}
+          animate={normalize}
+          exit={fade_out_scale_1}
+          transition={transition_fast}
+        >
+          {streamError ? (
             <Card>
               <CardHeader>
-                <CardTitle>Stream has ended</CardTitle>
-                <CardDescription>
-                  Once it has finished processing, you will be redirected.
-                </CardDescription>
+                <CardTitle>Stream unavailable</CardTitle>
+                <CardDescription>{streamError}</CardDescription>
               </CardHeader>
               <CardContent>
-                <BouncyClick>
-                  <Button asChild variant="link" className="px-0">
-                    <Link href={`/stream/${uuid}`}>Go to replay page</Link>
-                  </Button>
-                </BouncyClick>
+                <Button asChild variant="link" className="px-0">
+                  <Link href="/browse-live">Browse live streams</Link>
+                </Button>
               </CardContent>
             </Card>
           ) : (
-            <div className="grid gap-4 lg:grid-cols-[2fr_1fr] flex-1">
-              <Card>
-                <CardContent className="py-0">
-                  <div className="text-sm flex items-center mb-2 font-semibold">
-                    <div
-                      style={{ borderRadius: "50%" }}
-                      className="bg-red-500 mr-2 w-3 h-3 mb-1"
-                    ></div>
-                    Live
+            <>
+              <div className="mb-4 flex items-start justify-between gap-4">
+                <div>
+                  <div className="text-2xl font-semibold flex-1">
+                    {stream?.title ?? "Loading…"}
                   </div>
-                  {isHost ? (
-                    <div className="space-y-3">
-                      <div className="relative w-full">
-                        <div className="pointer-events-none relative overflow-hidden rounded-md border bg-black pb-[56.25%]">
-                          <video
-                            ref={localVideoRef}
-                            autoPlay
-                            playsInline
-                            muted
-                            className="absolute inset-0 h-full w-full object-cover"
-                          />
-                        </div>
-                      </div>
-
-                      {isHostReady ? (
-                        <div className="space-y-3">
-                          <div className="flex items-center gap-2">
-                            <label className="flex items-center gap-2 text-sm">
-                              <input
-                                type="checkbox"
-                                checked={videoEnabled}
-                                onChange={async (e) => {
-                                  setVideoEnabled(e.target.checked);
-                                  // Will trigger update via effect
-                                }}
-                              />
-                              Video
-                            </label>
-                            <label className="flex items-center gap-2 text-sm">
-                              <input
-                                type="checkbox"
-                                checked={audioEnabled}
-                                onChange={async (e) => {
-                                  setAudioEnabled(e.target.checked);
-                                  // Will trigger update via effect
-                                }}
-                              />
-                              Audio
-                            </label>
-                          </div>
-
-                          {videoEnabled && videoDevices.length > 0 ? (
-                            <div className="space-y-1">
-                              <label className="text-xs text-muted-foreground">
-                                Camera
-                              </label>
-                              <select
-                                className="w-full rounded-md border bg-background px-3 py-2 text-sm"
-                                value={selectedVideoDevice}
-                                onChange={(e) =>
-                                  setSelectedVideoDevice(e.target.value)
-                                }
-                              >
-                                {videoDevices.map((d) => (
-                                  <option key={d.deviceId} value={d.deviceId}>
-                                    {d.label || "Camera"}
-                                  </option>
-                                ))}
-                              </select>
-                            </div>
-                          ) : null}
-
-                          {audioEnabled && audioDevices.length > 0 ? (
-                            <div className="space-y-1">
-                              <label className="text-xs text-muted-foreground">
-                                Microphone
-                              </label>
-                              <select
-                                className="w-full rounded-md border bg-background px-3 py-2 text-sm"
-                                value={selectedAudioDevice}
-                                onChange={(e) =>
-                                  setSelectedAudioDevice(e.target.value)
-                                }
-                              >
-                                {audioDevices.map((d) => (
-                                  <option key={d.deviceId} value={d.deviceId}>
-                                    {d.label || "Microphone"}
-                                  </option>
-                                ))}
-                              </select>
-                            </div>
-                          ) : null}
-
-                          <Button
-                            onClick={updateMediaStream}
-                            variant="outline"
-                            size="sm"
-                            className="w-full"
-                          >
-                            Apply Device Changes
-                          </Button>
-                        </div>
-                      ) : (
-                        <div className="text-sm text-muted-foreground">
-                          Starting broadcast...
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      <div className="relative w-full">
-                        <div className="pointer-events-none relative overflow-hidden rounded-md border bg-black pb-[56.25%]">
-                          <video
-                            ref={remoteVideoRef}
-                            autoPlay
-                            playsInline
-                            className="absolute inset-0 h-full w-full object-cover"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                  <hr className="my-4 border-input" />
-                  <div className="text-sm text-zinc-300">
-                    {stream?.description ?? ""}
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card className="h-[50vh] md:h-full flex flex-col pb-0">
-                <CardContent className="pt-0 pb-6 flex-1 h-0 flex flex-col">
-                  <h3 className="text-sm font-semibold mb-2">Cope Section</h3>
-                  <div className="mb-3 flex items-center gap-2">
-                    <Input
-                      placeholder="Optional name"
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                    />
-                    <BouncyClick>
-                      <Button
-                        variant="outline"
-                        onClick={() => setAnonName(name)}
-                        className="w-full"
+                </div>
+                <div className="flex flex-col md:flex-row items-center gap-2">
+                  <BouncyClick>
+                    <Button
+                      variant="outline"
+                      onClick={async () => {
+                        try {
+                          await navigator.clipboard.writeText(
+                            window.location.href
+                          );
+                          toast.info("Link copied");
+                        } catch {
+                          toast.warning("Failed to copy link");
+                        }
+                      }}
+                      size="sm"
+                    >
+                      Copy Link
+                    </Button>
+                  </BouncyClick>
+                  <AnimatePresence mode="wait">
+                    {stream?.status !== "processing" && (
+                      <motion.div
+                        key="processing"
+                        initial={fade_out}
+                        animate={normalize}
+                        exit={fade_out_scale_1}
+                        transition={transition_fast}
                       >
-                        Set
-                      </Button>
-                    </BouncyClick>
-                  </div>
-
-                  <div className="md:h-0 flex-1 max-h-[75vh] overflow-auto rounded-md border bg-muted/30 p-2">
-                    {messages.length === 0 ? (
-                      <div className="p-4 text-center text-sm text-muted-foreground">
-                        No messages yet.
-                      </div>
-                    ) : (
-                      <div className="space-y-2">
-                        {messages
-                          .filter((m) => !m.removed)
-                          .map((m) => (
-                            <div key={m.uuid} className="group text-sm">
-                              <span className="font-medium">
-                                {m.name || "Anonymous"}
-                              </span>{" "}
-                              <span
-                                className="rounded px-1.5 py-0.5 text-xs"
-                                style={{
-                                  color: m.anon_text_color,
-                                  backgroundColor: m.anon_background_color,
-                                }}
-                              >
-                                {m.anon_id}
-                              </span>
-                              {getToken() ? (
-                                <BouncyClick>
-                                  <Button
-                                    variant="outline"
+                        {getToken() ? (
+                          <BouncyClick disabled={isEndingStream}>
+                            <Button
+                              disabled={isEndingStream}
+                              variant="destructive"
+                              onClick={async () => {
+                                setIsEndingStream(true);
+                                try {
+                                  const client = makeGqlClient(
+                                    getToken() ?? undefined
+                                  );
+                                  if (isHost) {
+                                    await stopRecordingAndUploadFinalClip();
+                                    await uploadQueueRef.current;
+                                    try {
+                                      localStreamRef.current
+                                        ?.getTracks()
+                                        .forEach((t) => t.stop());
+                                    } catch {
+                                      // ignore
+                                    }
+                                  }
+                                  await client.request(
+                                    `mutation($uuid:String!){endStream(uuid:$uuid){uuid status}}`,
+                                    {
+                                      uuid,
+                                    }
+                                  );
+                                  setStream((s) =>
+                                    s ? { ...s, status: "processing" } : s
+                                  );
+                                  setTimeout(
+                                    () => setIsEndingStream(false),
+                                    500
+                                  );
+                                } catch (e: any) {
+                                  toast.warning("Failed to end stream", e);
+                                  setIsEndingStream(false);
+                                }
+                              }}
+                              size="sm"
+                            >
+                              {isEndingStream ? (
+                                <>
+                                  <Spinner
+                                    color="light"
                                     size="sm"
-                                    className="ml-2 h-7 px-2 py-0.5 text-xs opacity-0 transition group-hover:opacity-100"
-                                    title="Remove message"
-                                    onClick={async () => {
-                                      try {
-                                        const client = makeGqlClient(
-                                          getToken() ?? undefined
-                                        );
-                                        await client.request(
-                                          `mutation($uuid:String!){removeChatMessage(uuid:$uuid){uuid removed}}`,
-                                          { uuid: m.uuid }
-                                        );
-                                        toast.info("Message removed");
-                                      } catch (e: unknown) {
-                                        const msg =
-                                          (
-                                            e as {
-                                              response?: {
-                                                errors?: Array<{
-                                                  message?: string;
-                                                }>;
-                                              };
-                                            }
-                                          )?.response?.errors?.[0]?.message ??
-                                          "Failed to remove";
-                                        toast.warning(msg);
-                                      }
-                                    }}
-                                  >
-                                    <Trash2 className="h-3.5 w-3.5" />
-                                    Remove
-                                  </Button>
-                                </BouncyClick>
-                              ) : null}
-                              <div className="mt-0.5 text-zinc-800">
-                                {m.message}
+                                    className="mr-2"
+                                  />{" "}
+                                  Ending
+                                </>
+                              ) : (
+                                "End Stream"
+                              )}
+                            </Button>
+                          </BouncyClick>
+                        ) : isHost && hostToken ? (
+                          <BouncyClick>
+                            <Button
+                              variant="destructive"
+                              onClick={async () => {
+                                setIsEndingStream(true);
+                                try {
+                                  const client = makeGqlClient();
+                                  await stopRecordingAndUploadFinalClip();
+                                  await uploadQueueRef.current;
+                                  try {
+                                    localStreamRef.current
+                                      ?.getTracks()
+                                      .forEach((t) => t.stop());
+                                  } catch {
+                                    // ignore
+                                  }
+                                  await client.request(
+                                    `mutation($uuid:String!,$hostToken:String!){endStreamAsHost(uuid:$uuid,hostToken:$hostToken){uuid status}}`,
+                                    { uuid, hostToken }
+                                  );
+                                  setStream((s) =>
+                                    s ? { ...s, status: "processing" } : s
+                                  );
+                                  setTimeout(
+                                    () => setIsEndingStream(false),
+                                    500
+                                  );
+                                } catch (err: any) {
+                                  toast.warning("Failed to end stream", err);
+                                  setIsEndingStream(false);
+                                }
+                              }}
+                              size="sm"
+                            >
+                              {isEndingStream ? (
+                                <>
+                                  <Spinner
+                                    color="light"
+                                    size="sm"
+                                    className="mr-2"
+                                  />{" "}
+                                  Ending
+                                </>
+                              ) : (
+                                "End Stream"
+                              )}
+                            </Button>
+                          </BouncyClick>
+                        ) : null}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              </div>
+
+              <AnimatePresence mode="wait" initial={false}>
+                {stream?.status === "processing" ? (
+                  <motion.div
+                    key="processing"
+                    initial={fade_out}
+                    animate={normalize}
+                    exit={fade_out_scale_1}
+                    transition={transition_fast}
+                  >
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>Stream has ended</CardTitle>
+                        <CardDescription>
+                          Once it has finished processing, you will be
+                          redirected.
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <BouncyClick>
+                          <Button asChild variant="link" className="px-0">
+                            <Link href={`/stream/${uuid}`}>
+                              Go to replay page
+                            </Link>
+                          </Button>
+                        </BouncyClick>
+                      </CardContent>
+                    </Card>
+                  </motion.div>
+                ) : (
+                  <motion.div
+                    key="live"
+                    initial={fade_out_scale_1}
+                    animate={normalize}
+                    exit={fade_out_scale_1}
+                    transition={transition_fast}
+                    className="grid gap-4 lg:grid-cols-[2fr_1fr] flex-1"
+                  >
+                    <Card>
+                      <CardContent className="py-0">
+                        <div className="text-sm flex items-center mb-2 font-semibold">
+                          <div
+                            style={{ borderRadius: "50%" }}
+                            className="bg-red-500 mr-2 w-3 h-3 mb-1"
+                          ></div>
+                          Live
+                        </div>
+                        {isHost ? (
+                          <div className="space-y-3">
+                            <div className="relative w-full">
+                              <div className="pointer-events-none relative overflow-hidden rounded-md border bg-black pb-[56.25%]">
+                                <video
+                                  ref={localVideoRef}
+                                  autoPlay
+                                  playsInline
+                                  muted
+                                  className="absolute inset-0 h-full w-full object-cover"
+                                />
                               </div>
                             </div>
-                          ))}
-                      </div>
-                    )}
-                  </div>
 
-                  <div className="mt-3 flex items-center gap-2">
-                    <Input
-                      placeholder="Write a message…"
-                      value={chatText}
-                      onChange={(e) => setChatText(e.target.value)}
-                    />
-                    <BouncyClick>
-                      <Button
-                        onClick={async () => {
-                          const msg = chatText.trim();
-                          if (!msg) return;
-                          setChatText("");
-                          const anon = getOrCreateAnonSession();
-                          const client = makeGqlClient();
-                          const res = await client.request<{
-                            sendChatMessage: ChatMessage;
-                          }>(
-                            `
+                            {isHostReady ? (
+                              <div className="space-y-3">
+                                <div className="flex items-center gap-2">
+                                  <label className="flex items-center gap-2 text-sm">
+                                    <input
+                                      type="checkbox"
+                                      checked={videoEnabled}
+                                      onChange={async (e) => {
+                                        setVideoEnabled(e.target.checked);
+                                        // Will trigger update via effect
+                                      }}
+                                    />
+                                    Video
+                                  </label>
+                                  <label className="flex items-center gap-2 text-sm">
+                                    <input
+                                      type="checkbox"
+                                      checked={audioEnabled}
+                                      onChange={async (e) => {
+                                        setAudioEnabled(e.target.checked);
+                                        // Will trigger update via effect
+                                      }}
+                                    />
+                                    Audio
+                                  </label>
+                                </div>
+
+                                {videoEnabled && videoDevices.length > 0 ? (
+                                  <div className="space-y-1">
+                                    <label className="text-xs text-muted-foreground">
+                                      Camera
+                                    </label>
+                                    <select
+                                      className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                                      value={selectedVideoDevice}
+                                      onChange={(e) =>
+                                        setSelectedVideoDevice(e.target.value)
+                                      }
+                                    >
+                                      {videoDevices.map((d) => (
+                                        <option
+                                          key={d.deviceId}
+                                          value={d.deviceId}
+                                        >
+                                          {d.label || "Camera"}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </div>
+                                ) : null}
+
+                                {audioEnabled && audioDevices.length > 0 ? (
+                                  <div className="space-y-1">
+                                    <label className="text-xs text-muted-foreground">
+                                      Microphone
+                                    </label>
+                                    <select
+                                      className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                                      value={selectedAudioDevice}
+                                      onChange={(e) =>
+                                        setSelectedAudioDevice(e.target.value)
+                                      }
+                                    >
+                                      {audioDevices.map((d) => (
+                                        <option
+                                          key={d.deviceId}
+                                          value={d.deviceId}
+                                        >
+                                          {d.label || "Microphone"}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </div>
+                                ) : null}
+
+                                <Button
+                                  onClick={updateMediaStream}
+                                  variant="outline"
+                                  size="sm"
+                                  className="w-full"
+                                >
+                                  Apply Device Changes
+                                </Button>
+                              </div>
+                            ) : (
+                              <div className="text-sm text-muted-foreground">
+                                Starting broadcast...
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="space-y-3">
+                            <div className="relative w-full">
+                              <div className="pointer-events-none relative overflow-hidden rounded-md border bg-black pb-[56.25%]">
+                                <video
+                                  ref={remoteVideoRef}
+                                  autoPlay
+                                  playsInline
+                                  className="absolute inset-0 h-full w-full object-cover"
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                        <hr className="my-4 border-input" />
+                        <div className="text-sm text-zinc-300">
+                          {stream?.description ?? ""}
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    <Card className="h-[50vh] md:h-full flex flex-col pb-0">
+                      <CardContent className="pt-0 pb-6 flex-1 h-0 flex flex-col">
+                        <h3 className="text-sm font-semibold mb-2">
+                          Cope Section
+                        </h3>
+                        <div className="mb-3 flex items-center gap-2">
+                          <Input
+                            placeholder="Optional name"
+                            value={name}
+                            onChange={(e) => setName(e.target.value)}
+                          />
+                          <BouncyClick>
+                            <Button
+                              variant="outline"
+                              onClick={() => setAnonName(name)}
+                              className="w-full"
+                            >
+                              Set
+                            </Button>
+                          </BouncyClick>
+                        </div>
+
+                        <div className="md:h-0 flex-1 max-h-[75vh] overflow-auto rounded-md border bg-muted/30 p-2">
+                          {messages.length === 0 ? (
+                            <div className="p-4 text-center text-sm text-muted-foreground">
+                              No messages yet.
+                            </div>
+                          ) : (
+                            <div className="space-y-2">
+                              {messages
+                                .filter((m) => !m.removed)
+                                .map((m) => (
+                                  <div key={m.uuid} className="group text-sm">
+                                    <span className="font-medium">
+                                      {m.name || "Anonymous"}
+                                    </span>{" "}
+                                    <span
+                                      className="rounded px-1.5 py-0.5 text-xs"
+                                      style={{
+                                        color: m.anon_text_color,
+                                        backgroundColor:
+                                          m.anon_background_color,
+                                      }}
+                                    >
+                                      {m.anon_id}
+                                    </span>
+                                    {getToken() ? (
+                                      <BouncyClick>
+                                        <Button
+                                          variant="outline"
+                                          size="sm"
+                                          className="ml-2 h-7 px-2 py-0.5 text-xs opacity-0 transition group-hover:opacity-100"
+                                          title="Remove message"
+                                          onClick={async () => {
+                                            try {
+                                              const client = makeGqlClient(
+                                                getToken() ?? undefined
+                                              );
+                                              await client.request(
+                                                `mutation($uuid:String!){removeChatMessage(uuid:$uuid){uuid removed}}`,
+                                                { uuid: m.uuid }
+                                              );
+                                              toast.info("Message removed");
+                                            } catch (e: unknown) {
+                                              const msg =
+                                                (
+                                                  e as {
+                                                    response?: {
+                                                      errors?: Array<{
+                                                        message?: string;
+                                                      }>;
+                                                    };
+                                                  }
+                                                )?.response?.errors?.[0]
+                                                  ?.message ??
+                                                "Failed to remove";
+                                              toast.warning(msg);
+                                            }
+                                          }}
+                                        >
+                                          <Trash2 className="h-3.5 w-3.5" />
+                                          Remove
+                                        </Button>
+                                      </BouncyClick>
+                                    ) : null}
+                                    <div className="mt-0.5 text-zinc-800">
+                                      {m.message}
+                                    </div>
+                                  </div>
+                                ))}
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="mt-3 flex items-center gap-2">
+                          <Input
+                            placeholder="Write a message…"
+                            value={chatText}
+                            onChange={(e) => setChatText(e.target.value)}
+                          />
+                          <BouncyClick>
+                            <Button
+                              onClick={async () => {
+                                const msg = chatText.trim();
+                                if (!msg) return;
+                                setChatText("");
+                                const anon = getOrCreateAnonSession();
+                                const client = makeGqlClient();
+                                const res = await client.request<{
+                                  sendChatMessage: ChatMessage;
+                                }>(
+                                  `
                           mutation Send(
                             $streamUuid: String!
                             $message: String!
@@ -1246,29 +1350,36 @@ export default function LiveStreamPage() {
                             }
                           }
                         `,
-                            {
-                              streamUuid: uuid,
-                              message: msg,
-                              name: name || undefined,
-                              anon_id: anon.anon_id,
-                              anon_text_color: anon.anon_text_color,
-                              anon_background_color: anon.anon_background_color,
-                            }
-                          );
-                          setMessages((prev) => [...prev, res.sendChatMessage]);
-                        }}
-                        className="w-full"
-                      >
-                        <SendHorizonal className="h-4 w-4" />
-                      </Button>
-                    </BouncyClick>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
+                                  {
+                                    streamUuid: uuid,
+                                    message: msg,
+                                    name: name || undefined,
+                                    anon_id: anon.anon_id,
+                                    anon_text_color: anon.anon_text_color,
+                                    anon_background_color:
+                                      anon.anon_background_color,
+                                  }
+                                );
+                                setMessages((prev) => [
+                                  ...prev,
+                                  res.sendChatMessage,
+                                ]);
+                              }}
+                              className="w-full"
+                            >
+                              <SendHorizonal className="h-4 w-4" />
+                            </Button>
+                          </BouncyClick>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </>
           )}
-        </>
-      )}
+        </motion.div>
+      </AnimatePresence>
     </div>
   );
 }

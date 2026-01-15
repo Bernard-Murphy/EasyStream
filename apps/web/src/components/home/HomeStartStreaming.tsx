@@ -342,6 +342,7 @@ export function HomeStartStreaming() {
               filename: "thumbnail.jpg",
               contentType: "image/jpeg",
             });
+
             await client.request(
               `mutation($uuid:String!,$thumbnailUrl:String!){setStreamThumbnail(uuid:$uuid,thumbnailUrl:$thumbnailUrl){uuid}}`,
               { uuid, thumbnailUrl: up.url }

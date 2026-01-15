@@ -15,6 +15,13 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import BouncyClick from "@/components/ui/bouncy-click";
+import { AnimatePresence, motion } from "framer-motion";
+import {
+  fade_out,
+  fade_out_scale_1,
+  normalize,
+  transition_fast,
+} from "@/lib/transitions";
 
 type Stream = {
   uuid: string;
@@ -123,189 +130,207 @@ export default function StreamReplayPage() {
 
   return (
     <div className="mx-auto max-w-full px-4 py-8 flex flex-col min-h-[90vh]">
-      {streamError ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>Stream unavailable</CardTitle>
-            <CardDescription>{streamError}</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <BouncyClick>
-              <Button asChild variant="link" className="px-0">
-                <Link href="/browse-past">Browse past streams</Link>
-              </Button>
-            </BouncyClick>
-          </CardContent>
-        </Card>
-      ) : (
-        <>
-          <div className="mb-4 flex items-start justify-between gap-4">
-            <div>
-              <div className="text-2xl font-semibold">
-                {stream?.title ?? "Loading…"}
-              </div>
-              <div className="mt-1 text-sm text-muted-foreground">Replay</div>
-            </div>
-          </div>
-          {getToken() ? (
-            <div className="mb-4 flex justify-end">
-              <BouncyClick>
-                <Button
-                  variant="destructive"
-                  onClick={async () => {
-                    try {
-                      const client = makeGqlClient(getToken() ?? undefined);
-                      await client.request(
-                        `mutation($uuid:String!){removeStream(uuid:$uuid){uuid removed}}`,
-                        { uuid }
-                      );
-                      toast.info("Stream removed");
-                    } catch (e: unknown) {
-                      const msg =
-                        (
-                          e as {
-                            response?: { errors?: Array<{ message?: string }> };
-                          }
-                        )?.response?.errors?.[0]?.message ??
-                        "Failed to remove stream";
-                      toast.warning(msg);
-                    }
-                  }}
-                >
-                  Remove Stream
-                </Button>
-              </BouncyClick>
-            </div>
-          ) : null}
-
-          <div className="grid gap-4 lg:grid-cols-[2fr_1fr] flex-1">
+      <AnimatePresence mode="wait" initial={false}>
+        <motion.div
+          key={streamError ? "error" : "stream"}
+          initial={fade_out}
+          animate={normalize}
+          exit={fade_out_scale_1}
+          transition={transition_fast}
+        >
+          {streamError ? (
             <Card>
-              <CardContent className="pt-0">
-                {stream?.removed ? (
-                  <div className="text-sm text-muted-foreground">
-                    This stream has been removed by a moderator.
-                    <div className="mt-2">
-                      <BouncyClick>
-                        <Button asChild variant="link" className="px-0">
-                          <Link href="/browse-past">Browse past streams</Link>
-                        </Button>
-                      </BouncyClick>
-                    </div>
+              <CardHeader>
+                <CardTitle>Stream unavailable</CardTitle>
+                <CardDescription>{streamError}</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <BouncyClick>
+                  <Button asChild variant="link" className="px-0">
+                    <Link href="/browse-past">Browse past streams</Link>
+                  </Button>
+                </BouncyClick>
+              </CardContent>
+            </Card>
+          ) : (
+            <>
+              <div className="mb-4 flex items-start justify-between gap-4">
+                <div>
+                  <div className="text-2xl font-semibold">
+                    {stream?.title ?? "Loading…"}
                   </div>
-                ) : null}
-                {stream?.removed ? null : stream?.status !== "past" ? (
-                  <div className="text-sm text-muted-foreground">
-                    Stream is not processed yet (status: {stream?.status ?? "…"}
-                    ).
+                  <div className="mt-1 text-sm text-muted-foreground">
+                    Replay
                   </div>
-                ) : (stream.fileUrls?.length ?? 0) === 0 ? (
-                  <div className="text-sm text-muted-foreground">
-                    Media processing. Please come back later.
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    <div className="flex flex-wrap gap-2">
-                      {stream.fileUrls.map((_, idx) => (
-                        <BouncyClick key={idx}>
-                          <Button
-                            key={idx}
-                            variant={
-                              idx === activeIndex ? "default" : "outline"
-                            }
-                            size="sm"
-                            onClick={() => activateIndex(idx)}
-                          >
-                            Part {idx + 1}
-                          </Button>
-                        </BouncyClick>
-                      ))}
-                    </div>
+                </div>
+              </div>
+              {getToken() ? (
+                <div className="mb-4 flex justify-end">
+                  <BouncyClick>
+                    <Button
+                      variant="destructive"
+                      onClick={async () => {
+                        try {
+                          const client = makeGqlClient(getToken() ?? undefined);
+                          await client.request(
+                            `mutation($uuid:String!){removeStream(uuid:$uuid){uuid removed}}`,
+                            { uuid }
+                          );
+                          toast.info("Stream removed");
+                        } catch (e: unknown) {
+                          const msg =
+                            (
+                              e as {
+                                response?: {
+                                  errors?: Array<{ message?: string }>;
+                                };
+                              }
+                            )?.response?.errors?.[0]?.message ??
+                            "Failed to remove stream";
+                          toast.warning(msg);
+                        }
+                      }}
+                    >
+                      Remove Stream
+                    </Button>
+                  </BouncyClick>
+                </div>
+              ) : null}
 
-                    {stream.fileUrls.map((url, idx) => (
-                      <div
-                        key={url}
-                        className={idx === activeIndex ? "block" : "hidden"}
-                      >
-                        <div className="relative w-full">
-                          <div className="relative overflow-hidden rounded-md border bg-black pb-[54%]">
-                            <video
-                              ref={(el) => {
-                                videoRefs.current[idx] = el;
-                              }}
-                              src={url}
-                              controls
-                              playsInline
-                              onTimeUpdate={(e) => {
-                                if (idx !== activeIndex) return;
-                                setCurrentTime(
-                                  (e.target as HTMLVideoElement).currentTime
-                                );
-                              }}
-                              className="absolute inset-0 h-full w-full object-cover"
-                              onLoadedMetadata={(e) => {
-                                const duration =
-                                  (e.target as HTMLVideoElement).duration || 0;
-                                setDurations((prev) => {
-                                  const next = prev.slice();
-                                  next[idx] = duration;
-                                  return next;
-                                });
-                              }}
-                              onPlay={() => activateIndex(idx)}
-                            />
-                          </div>
+              <div className="grid gap-4 lg:grid-cols-[2fr_1fr] flex-1">
+                <Card>
+                  <CardContent className="pt-0">
+                    {stream?.removed ? (
+                      <div className="text-sm text-muted-foreground">
+                        This stream has been removed by a moderator.
+                        <div className="mt-2">
+                          <BouncyClick>
+                            <Button asChild variant="link" className="px-0">
+                              <Link href="/browse-past">
+                                Browse past streams
+                              </Link>
+                            </Button>
+                          </BouncyClick>
                         </div>
                       </div>
-                    ))}
-                  </div>
-                )}
-                <hr className="my-4 border-input" />
-                <div className="text-sm text-zinc-300">
-                  {stream?.description ?? ""}
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="h-[50vh] md:h-full flex flex-col ">
-              <CardContent className="pt-0  flex-1 h-0 flex flex-col">
-                <h3 className="text-sm font-semibold mb-2">Cope Replay</h3>
-                <div className="md:h-0 flex-1 max-h-[75vh] overflow-auto rounded-md border bg-muted/30 p-2">
-                  {syncedMessages.length === 0 ? (
-                    <div className="p-4 text-sm text-muted-foreground text-center">
-                      No messages yet.
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
-                      {syncedMessages.map((m) => (
-                        <div key={m.uuid} className="group text-sm">
-                          <span className="font-medium">
-                            {m.name || "Anonymous"}
-                          </span>{" "}
-                          <span
-                            className="rounded px-1.5 py-0.5 text-xs"
-                            style={{
-                              color: m.anon_text_color,
-                              backgroundColor: m.anon_background_color,
-                            }}
-                          >
-                            {m.anon_id}
-                          </span>
-                          <div className="text-xs text-slate-500">
-                            {new Date(m.create_date).toLocaleTimeString()}
-                          </div>
-                          <div className="mt-0.5 text-slate-800">
-                            {m.message}
-                          </div>
+                    ) : null}
+                    {stream?.removed ? null : stream?.status !== "past" ? (
+                      <div className="text-sm text-muted-foreground">
+                        Stream is not processed yet (status:{" "}
+                        {stream?.status ?? "…"}
+                        ).
+                      </div>
+                    ) : (stream.fileUrls?.length ?? 0) === 0 ? (
+                      <div className="text-sm text-muted-foreground">
+                        Media processing. Please come back later.
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        <div className="flex flex-wrap gap-2">
+                          {stream.fileUrls.map((_, idx) => (
+                            <BouncyClick key={idx}>
+                              <Button
+                                key={idx}
+                                variant={
+                                  idx === activeIndex ? "default" : "outline"
+                                }
+                                size="sm"
+                                onClick={() => activateIndex(idx)}
+                              >
+                                Part {idx + 1}
+                              </Button>
+                            </BouncyClick>
+                          ))}
                         </div>
-                      ))}
+
+                        {stream.fileUrls.map((url, idx) => (
+                          <div
+                            key={url}
+                            className={idx === activeIndex ? "block" : "hidden"}
+                          >
+                            <div className="relative w-full">
+                              <div className="relative overflow-hidden rounded-md border bg-black pb-[54%]">
+                                <video
+                                  ref={(el) => {
+                                    videoRefs.current[idx] = el;
+                                  }}
+                                  src={url}
+                                  controls
+                                  playsInline
+                                  onTimeUpdate={(e) => {
+                                    if (idx !== activeIndex) return;
+                                    setCurrentTime(
+                                      (e.target as HTMLVideoElement).currentTime
+                                    );
+                                  }}
+                                  className="absolute inset-0 h-full w-full object-cover"
+                                  onLoadedMetadata={(e) => {
+                                    const duration =
+                                      (e.target as HTMLVideoElement).duration ||
+                                      0;
+                                    setDurations((prev) => {
+                                      const next = prev.slice();
+                                      next[idx] = duration;
+                                      return next;
+                                    });
+                                  }}
+                                  onPlay={() => activateIndex(idx)}
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <hr className="my-4 border-input" />
+                    <div className="text-sm text-zinc-300">
+                      {stream?.description ?? ""}
                     </div>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        </>
-      )}
+                  </CardContent>
+                </Card>
+
+                <Card className="h-[50vh] md:h-full flex flex-col ">
+                  <CardContent className="pt-0  flex-1 h-0 flex flex-col">
+                    <h3 className="text-sm font-semibold mb-2">Cope Replay</h3>
+                    <div className="md:h-0 flex-1 max-h-[75vh] overflow-auto rounded-md border bg-muted/30 p-2">
+                      {syncedMessages.length === 0 ? (
+                        <div className="p-4 text-sm text-muted-foreground text-center">
+                          No messages yet.
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          {syncedMessages.map((m) => (
+                            <div key={m.uuid} className="group text-sm">
+                              <span className="font-medium">
+                                {m.name || "Anonymous"}
+                              </span>{" "}
+                              <span
+                                className="rounded px-1.5 py-0.5 text-xs"
+                                style={{
+                                  color: m.anon_text_color,
+                                  backgroundColor: m.anon_background_color,
+                                }}
+                              >
+                                {m.anon_id}
+                              </span>
+                              <div className="text-xs text-slate-500">
+                                {new Date(m.create_date).toLocaleTimeString()}
+                              </div>
+                              <div className="mt-0.5 text-slate-800">
+                                {m.message}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            </>
+          )}
+        </motion.div>
+      </AnimatePresence>
     </div>
   );
 }

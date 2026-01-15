@@ -22,22 +22,33 @@ export class ProcessingService {
   ) {}
 
   async processStreamToPast(streamUuid: string): Promise<void> {
-    const stream = await this.prisma.stream.findUnique({ where: { uuid: streamUuid } });
+    const stream = await this.prisma.stream.findUnique({
+      where: { uuid: streamUuid },
+    });
     if (!stream) return;
 
     const clipUrls = stream.fileUrls ?? [];
     const streamLengthMb = Number(this.config.get('STREAM_LENGTH') ?? 250);
 
     const mode = String(this.config.get('ASSEMBLY_MODE') ?? 'local');
-    const lambdaName = this.config.get<string>('ASSEMBLE_STREAM_LAMBDA_NAME') ?? '';
+    const lambdaName =
+      this.config.get<string>('ASSEMBLE_STREAM_LAMBDA_NAME') ?? '';
 
     if (mode === 'lambda' && lambdaName) {
       try {
-        const assembledUrls = await this.assembleViaLambda({
+        const assembled = await this.assembleViaLambda({
           lambdaName,
           streamUuid,
           clipUrls,
           streamLengthMb,
+        });
+        const assembledUrls = assembled.map((item) => {
+          const key = item.key ?? this.uploads.extractKeyFromUrl(item.url);
+          if (key) {
+            const stUrl = this.uploads.getStorjUrlFromKey(key);
+            if (stUrl) return stUrl;
+          }
+          return item.url;
         });
         const updated = await this.prisma.stream.update({
           where: { uuid: streamUuid },
@@ -67,7 +78,9 @@ export class ProcessingService {
         // s3/storj
         const bucket = this.config.get<string>('STORJ_BUCKET');
         if (!bucket) return 0;
-        const head = await s3.headObject({ Bucket: bucket, Key: key }).promise();
+        const head = await s3
+          .headObject({ Bucket: bucket, Key: key })
+          .promise();
         return (head.ContentLength ?? 0) / (1024 * 1024);
       }),
     );
@@ -80,14 +93,25 @@ export class ProcessingService {
     });
 
     const assembledUrls: string[] = [];
-    const tmpRoot = path.join('/tmp', 'easystream-processing', streamUuid, `${Date.now()}`);
+    const tmpRoot = path.join(
+      '/tmp',
+      'easystream-processing',
+      streamUuid,
+      `${Date.now()}`,
+    );
     await fs.mkdir(tmpRoot, { recursive: true });
 
     for (const group of plan.groups) {
-      const partKey = this.uploads.makeKey(`streams/${streamUuid}/assembled`, '.webm');
+      const partKey = this.uploads.makeKey(
+        `streams/${streamUuid}/assembled`,
+        '.webm',
+      );
       const outPath = path.join(tmpRoot, `part-${group.partIndex}.webm`);
 
-      const concatListPath = path.join(tmpRoot, `concat-${group.partIndex}.txt`);
+      const concatListPath = path.join(
+        tmpRoot,
+        `concat-${group.partIndex}.txt`,
+      );
       const inputs: string[] = [];
 
       for (const url of group.clipUrls) {
@@ -105,7 +129,9 @@ export class ProcessingService {
         if (!bucket) continue;
         const dlPath = path.join(tmpRoot, path.basename(key));
         await new Promise<void>((resolve, reject) => {
-          const rs = s3.getObject({ Bucket: bucket, Key: key }).createReadStream();
+          const rs = s3
+            .getObject({ Bucket: bucket, Key: key })
+            .createReadStream();
           const ws = fsSync.createWriteStream(dlPath);
           rs.on('error', reject);
           ws.on('error', reject);
@@ -118,7 +144,9 @@ export class ProcessingService {
       if (inputs.length === 0) continue;
 
       // ffmpeg concat (stream copy)
-      const concatList = inputs.map((p) => `file '${p.replace(/'/g, "'\\''")}'`).join('\n') + '\n';
+      const concatList =
+        inputs.map((p) => `file '${p.replace(/'/g, "'\\''")}'`).join('\n') +
+        '\n';
       await fs.writeFile(concatListPath, concatList);
 
       await this.runFfmpegConcat(concatListPath, outPath);
@@ -151,7 +179,7 @@ export class ProcessingService {
     streamUuid: string;
     clipUrls: string[];
     streamLengthMb: number;
-  }): Promise<string[]> {
+  }): Promise<Array<{ url: string; key?: string }>> {
     const lambda = new AWS.Lambda({
       region: this.config.get<string>('REGION') ?? 'us-east-1',
     });
@@ -175,21 +203,42 @@ export class ProcessingService {
     }
     const raw = invoke.Payload ? invoke.Payload.toString() : '';
     const parsed = raw ? JSON.parse(raw) : null;
-    const assembled = (parsed?.assembled ?? []) as Array<{ url: string }>;
-    return assembled.map((x) => x.url).filter(Boolean);
+    const assembled = (parsed?.assembled ?? []) as Array<{
+      url?: string;
+      key?: string;
+    }>;
+    return assembled
+      .map((x) => ({ url: x.url ?? '', key: x.key }))
+      .filter((x): x is { url: string; key: string } => Boolean(x.url));
   }
 
   private async runFfmpegConcat(listPath: string, outPath: string) {
     await new Promise<void>((resolve, reject) => {
-      const p = spawn('ffmpeg', ['-y', '-f', 'concat', '-safe', '0', '-i', listPath, '-c', 'copy', outPath], {
-        stdio: ['ignore', 'pipe', 'pipe'],
-      });
+      const p = spawn(
+        'ffmpeg',
+        [
+          '-y',
+          '-f',
+          'concat',
+          '-safe',
+          '0',
+          '-i',
+          listPath,
+          '-c',
+          'copy',
+          outPath,
+        ],
+        {
+          stdio: ['ignore', 'pipe', 'pipe'],
+        },
+      );
       let stderr = '';
       p.stderr.on('data', (d) => (stderr += d.toString()));
       p.on('error', reject);
       p.on('close', (code) => {
         if (code === 0) resolve();
-        else reject(new Error(`ffmpeg failed (${code}): ${stderr.slice(-2000)}`));
+        else
+          reject(new Error(`ffmpeg failed (${code}): ${stderr.slice(-2000)}`));
       });
     });
   }
@@ -228,10 +277,10 @@ export class ProcessingService {
           })
           .promise();
       } catch (e) {
-        this.logger.warn(`Failed deleting clips from s3: ${(e as any)?.message ?? e}`);
+        this.logger.warn(
+          `Failed deleting clips from s3: ${(e as any)?.message ?? e}`,
+        );
       }
     }
   }
 }
-
-
