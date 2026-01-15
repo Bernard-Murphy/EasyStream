@@ -23,6 +23,10 @@ export class UploadsService {
     const endpoint = this.config.get<string>('STORJ_ENDPOINT');
     const accessKey = this.config.get<string>('STORJ_SECRET_ACCESS_ID');
     const secretKey = this.config.get<string>('STORJ_SECRET_ACCESS_KEY');
+    console.log('bucket', bucket);
+    console.log('endpoint', endpoint);
+    console.log('accessKey', accessKey);
+    console.log('secretKey', secretKey);
 
     if (bucket && endpoint && accessKey && secretKey) {
       await s3
@@ -55,6 +59,10 @@ export class UploadsService {
     const endpoint = this.config.get<string>('STORJ_ENDPOINT');
     const accessKey = this.config.get<string>('STORJ_SECRET_ACCESS_ID');
     const secretKey = this.config.get<string>('STORJ_SECRET_ACCESS_KEY');
+    console.log('bucket', bucket);
+    console.log('endpoint', endpoint);
+    console.log('accessKey', accessKey);
+    console.log('secretKey', secretKey);
 
     if (bucket && endpoint && accessKey && secretKey) {
       await s3
@@ -97,5 +105,3 @@ export class UploadsService {
     return null;
   }
 }
-
-
