@@ -13,6 +13,9 @@ export default function Home() {
       <div className="mt-8 flex justify-center">
         <HomeStartStreaming />
       </div>
+      <p className="text-sm text-zinc-400 text-center mt-4">
+        Created by Bernard Murphy
+      </p>
     </div>
   );
 }
