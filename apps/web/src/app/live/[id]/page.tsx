@@ -11,7 +11,7 @@ import { clipUploadUrl, uploadBlob } from "@/lib/uploads";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { CONFIG } from "@/lib/config";
-import { Trash2 } from "lucide-react";
+import { Trash2, SendHorizonal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -21,6 +21,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import BouncyClick from "@/components/ui/bouncy-click";
 
 type Stream = {
   uuid: string;
@@ -738,7 +739,7 @@ export default function LiveStreamPage() {
   }
 
   return (
-    <div className="mx-auto w-full px-4 py-8">
+    <div className="mx-auto w-full px-4 py-8 flex flex-col min-h-[90vh]">
       {streamError ? (
         <Card>
           <CardHeader>
@@ -764,25 +765,59 @@ export default function LiveStreamPage() {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                onClick={async () => {
-                  try {
-                    await navigator.clipboard.writeText(window.location.href);
-                    toast.info("Link copied");
-                  } catch {
-                    toast.warning("Failed to copy link");
-                  }
-                }}
-              >
-                Copy Link
-              </Button>
-              {getToken() ? (
+              <BouncyClick>
                 <Button
-                  variant="destructive"
+                  variant="outline"
                   onClick={async () => {
-                    const client = makeGqlClient(getToken() ?? undefined);
-                    if (isHost) {
+                    try {
+                      await navigator.clipboard.writeText(window.location.href);
+                      toast.info("Link copied");
+                    } catch {
+                      toast.warning("Failed to copy link");
+                    }
+                  }}
+                >
+                  Copy Link
+                </Button>
+              </BouncyClick>
+
+              {getToken() ? (
+                <BouncyClick>
+                  <Button
+                    variant="destructive"
+                    onClick={async () => {
+                      const client = makeGqlClient(getToken() ?? undefined);
+                      if (isHost) {
+                        await stopRecordingAndUploadFinalClip();
+                        await uploadQueueRef.current;
+                        try {
+                          localStreamRef.current
+                            ?.getTracks()
+                            .forEach((t) => t.stop());
+                        } catch {
+                          // ignore
+                        }
+                      }
+                      await client.request(
+                        `mutation($uuid:String!){endStream(uuid:$uuid){uuid status}}`,
+                        {
+                          uuid,
+                        }
+                      );
+                      setStream((s) =>
+                        s ? { ...s, status: "processing" } : s
+                      );
+                    }}
+                  >
+                    End Stream
+                  </Button>
+                </BouncyClick>
+              ) : isHost && hostToken ? (
+                <BouncyClick>
+                  <Button
+                    variant="destructive"
+                    onClick={async () => {
+                      const client = makeGqlClient();
                       await stopRecordingAndUploadFinalClip();
                       await uploadQueueRef.current;
                       try {
@@ -792,41 +827,18 @@ export default function LiveStreamPage() {
                       } catch {
                         // ignore
                       }
-                    }
-                    await client.request(
-                      `mutation($uuid:String!){endStream(uuid:$uuid){uuid status}}`,
-                      {
-                        uuid,
-                      }
-                    );
-                    setStream((s) => (s ? { ...s, status: "processing" } : s));
-                  }}
-                >
-                  End Stream
-                </Button>
-              ) : isHost && hostToken ? (
-                <Button
-                  variant="destructive"
-                  onClick={async () => {
-                    const client = makeGqlClient();
-                    await stopRecordingAndUploadFinalClip();
-                    await uploadQueueRef.current;
-                    try {
-                      localStreamRef.current
-                        ?.getTracks()
-                        .forEach((t) => t.stop());
-                    } catch {
-                      // ignore
-                    }
-                    await client.request(
-                      `mutation($uuid:String!,$hostToken:String!){endStreamAsHost(uuid:$uuid,hostToken:$hostToken){uuid status}}`,
-                      { uuid, hostToken }
-                    );
-                    setStream((s) => (s ? { ...s, status: "processing" } : s));
-                  }}
-                >
-                  End Stream
-                </Button>
+                      await client.request(
+                        `mutation($uuid:String!,$hostToken:String!){endStreamAsHost(uuid:$uuid,hostToken:$hostToken){uuid status}}`,
+                        { uuid, hostToken }
+                      );
+                      setStream((s) =>
+                        s ? { ...s, status: "processing" } : s
+                      );
+                    }}
+                  >
+                    End Stream
+                  </Button>
+                </BouncyClick>
               ) : null}
             </div>
           </div>
@@ -840,18 +852,24 @@ export default function LiveStreamPage() {
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <Button asChild variant="link" className="px-0">
-                  <Link href={`/stream/${uuid}`}>Go to replay page</Link>
-                </Button>
+                <BouncyClick>
+                  <Button asChild variant="link" className="px-0">
+                    <Link href={`/stream/${uuid}`}>Go to replay page</Link>
+                  </Button>
+                </BouncyClick>
               </CardContent>
             </Card>
           ) : (
-            <div className="grid gap-4 lg:grid-cols-[2fr_1fr]">
+            <div className="grid gap-4 lg:grid-cols-[2fr_1fr] flex-1">
               <Card>
-                <CardHeader>
-                  <CardTitle className="text-sm">Live Stream</CardTitle>
-                </CardHeader>
-                <CardContent className="pt-0">
+                <CardContent className="py-0">
+                  <div className="text-sm flex items-center mb-2 font-semibold">
+                    <div
+                      style={{ borderRadius: "50%" }}
+                      className="bg-red-500 mr-2 w-3 h-3 mb-1"
+                    ></div>
+                    Live
+                  </div>
                   {isHost ? (
                     <div className="space-y-3">
                       <div className="relative w-full">
@@ -868,16 +886,6 @@ export default function LiveStreamPage() {
                       <Button onClick={() => startHosting()}>
                         Start Camera + Broadcast
                       </Button>
-                      <div className="text-xs text-zinc-600">
-                        Waterfall connections are established via hierarchy
-                        updates + GraphQL signaling (STUN-only).
-                      </div>
-                      {myPosition ? (
-                        <div className="text-xs text-zinc-500">
-                          Stage {myPosition.stage} • children:{" "}
-                          {(myPosition.children ?? []).length}
-                        </div>
-                      ) : null}
                     </div>
                   ) : (
                     <div className="space-y-3">
@@ -891,11 +899,6 @@ export default function LiveStreamPage() {
                           />
                         </div>
                       </div>
-                      <div className="text-xs text-zinc-600">
-                        Auto-connecting using the waterfall hierarchy (parents:{" "}
-                        {(myPosition?.parents ?? []).length}, stage{" "}
-                        {myPosition?.stage ?? "…"}).
-                      </div>
                     </div>
                   )}
                   <hr className="my-4 border-input" />
@@ -905,25 +908,29 @@ export default function LiveStreamPage() {
                 </CardContent>
               </Card>
 
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-sm">Live Chat</CardTitle>
-                </CardHeader>
-                <CardContent className="pt-0">
+              <Card className="h-full flex flex-col pb-0">
+                <CardContent className="pt-0 pb-6 flex-1 h-0 flex flex-col">
+                  <h3 className="text-sm font-semibold mb-2">Cope Section</h3>
                   <div className="mb-3 flex items-center gap-2">
                     <Input
                       placeholder="Optional name"
                       value={name}
                       onChange={(e) => setName(e.target.value)}
                     />
-                    <Button variant="outline" onClick={() => setAnonName(name)}>
-                      Set
-                    </Button>
+                    <BouncyClick>
+                      <Button
+                        variant="outline"
+                        onClick={() => setAnonName(name)}
+                        className="w-full"
+                      >
+                        Set
+                      </Button>
+                    </BouncyClick>
                   </div>
 
-                  <div className="h-72 overflow-auto rounded-md border bg-muted/30 p-2">
+                  <div className="h-0 flex-1 max-h-[75vh] overflow-auto rounded-md border bg-muted/30 p-2">
                     {messages.length === 0 ? (
-                      <div className="p-2 text-sm text-muted-foreground">
+                      <div className="p-4 text-center text-sm text-muted-foreground">
                         No messages yet.
                       </div>
                     ) : (
@@ -945,40 +952,42 @@ export default function LiveStreamPage() {
                                 {m.anon_id}
                               </span>
                               {getToken() ? (
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  className="ml-2 h-7 px-2 py-0.5 text-xs opacity-0 transition group-hover:opacity-100"
-                                  title="Remove message"
-                                  onClick={async () => {
-                                    try {
-                                      const client = makeGqlClient(
-                                        getToken() ?? undefined
-                                      );
-                                      await client.request(
-                                        `mutation($uuid:String!){removeChatMessage(uuid:$uuid){uuid removed}}`,
-                                        { uuid: m.uuid }
-                                      );
-                                      toast.info("Message removed");
-                                    } catch (e: unknown) {
-                                      const msg =
-                                        (
-                                          e as {
-                                            response?: {
-                                              errors?: Array<{
-                                                message?: string;
-                                              }>;
-                                            };
-                                          }
-                                        )?.response?.errors?.[0]?.message ??
-                                        "Failed to remove";
-                                      toast.warning(msg);
-                                    }
-                                  }}
-                                >
-                                  <Trash2 className="h-3.5 w-3.5" />
-                                  Remove
-                                </Button>
+                                <BouncyClick>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="ml-2 h-7 px-2 py-0.5 text-xs opacity-0 transition group-hover:opacity-100"
+                                    title="Remove message"
+                                    onClick={async () => {
+                                      try {
+                                        const client = makeGqlClient(
+                                          getToken() ?? undefined
+                                        );
+                                        await client.request(
+                                          `mutation($uuid:String!){removeChatMessage(uuid:$uuid){uuid removed}}`,
+                                          { uuid: m.uuid }
+                                        );
+                                        toast.info("Message removed");
+                                      } catch (e: unknown) {
+                                        const msg =
+                                          (
+                                            e as {
+                                              response?: {
+                                                errors?: Array<{
+                                                  message?: string;
+                                                }>;
+                                              };
+                                            }
+                                          )?.response?.errors?.[0]?.message ??
+                                          "Failed to remove";
+                                        toast.warning(msg);
+                                      }
+                                    }}
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                    Remove
+                                  </Button>
+                                </BouncyClick>
                               ) : null}
                               <div className="mt-0.5 text-zinc-800">
                                 {m.message}
@@ -995,17 +1004,18 @@ export default function LiveStreamPage() {
                       value={chatText}
                       onChange={(e) => setChatText(e.target.value)}
                     />
-                    <Button
-                      onClick={async () => {
-                        const msg = chatText.trim();
-                        if (!msg) return;
-                        setChatText("");
-                        const anon = getOrCreateAnonSession();
-                        const client = makeGqlClient();
-                        const res = await client.request<{
-                          sendChatMessage: ChatMessage;
-                        }>(
-                          `
+                    <BouncyClick>
+                      <Button
+                        onClick={async () => {
+                          const msg = chatText.trim();
+                          if (!msg) return;
+                          setChatText("");
+                          const anon = getOrCreateAnonSession();
+                          const client = makeGqlClient();
+                          const res = await client.request<{
+                            sendChatMessage: ChatMessage;
+                          }>(
+                            `
                           mutation Send(
                             $streamUuid: String!
                             $message: String!
@@ -1032,20 +1042,22 @@ export default function LiveStreamPage() {
                             }
                           }
                         `,
-                          {
-                            streamUuid: uuid,
-                            message: msg,
-                            name: name || undefined,
-                            anon_id: anon.anon_id,
-                            anon_text_color: anon.anon_text_color,
-                            anon_background_color: anon.anon_background_color,
-                          }
-                        );
-                        setMessages((prev) => [...prev, res.sendChatMessage]);
-                      }}
-                    >
-                      Send
-                    </Button>
+                            {
+                              streamUuid: uuid,
+                              message: msg,
+                              name: name || undefined,
+                              anon_id: anon.anon_id,
+                              anon_text_color: anon.anon_text_color,
+                              anon_background_color: anon.anon_background_color,
+                            }
+                          );
+                          setMessages((prev) => [...prev, res.sendChatMessage]);
+                        }}
+                        className="w-full"
+                      >
+                        <SendHorizonal className="h-4 w-4" />
+                      </Button>
+                    </BouncyClick>
                   </div>
                 </CardContent>
               </Card>

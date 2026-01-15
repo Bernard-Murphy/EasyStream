@@ -14,6 +14,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import BouncyClick from "@/components/ui/bouncy-click";
 
 type Stream = {
   uuid: string;
@@ -129,9 +130,11 @@ export default function StreamReplayPage() {
             <CardDescription>{streamError}</CardDescription>
           </CardHeader>
           <CardContent>
-            <Button asChild variant="link" className="px-0">
-              <Link href="/browse-past">Browse past streams</Link>
-            </Button>
+            <BouncyClick>
+              <Button asChild variant="link" className="px-0">
+                <Link href="/browse-past">Browse past streams</Link>
+              </Button>
+            </BouncyClick>
           </CardContent>
         </Card>
       ) : (
@@ -143,36 +146,35 @@ export default function StreamReplayPage() {
               </div>
               <div className="mt-1 text-sm text-muted-foreground">Replay</div>
             </div>
-            <Button asChild variant="outline">
-              <Link href={`/live/${uuid}`}>Back to Live Page</Link>
-            </Button>
           </div>
           {getToken() ? (
             <div className="mb-4 flex justify-end">
-              <Button
-                variant="destructive"
-                onClick={async () => {
-                  try {
-                    const client = makeGqlClient(getToken() ?? undefined);
-                    await client.request(
-                      `mutation($uuid:String!){removeStream(uuid:$uuid){uuid removed}}`,
-                      { uuid }
-                    );
-                    toast.info("Stream removed");
-                  } catch (e: unknown) {
-                    const msg =
-                      (
-                        e as {
-                          response?: { errors?: Array<{ message?: string }> };
-                        }
-                      )?.response?.errors?.[0]?.message ??
-                      "Failed to remove stream";
-                    toast.warning(msg);
-                  }
-                }}
-              >
-                Remove Stream
-              </Button>
+              <BouncyClick>
+                <Button
+                  variant="destructive"
+                  onClick={async () => {
+                    try {
+                      const client = makeGqlClient(getToken() ?? undefined);
+                      await client.request(
+                        `mutation($uuid:String!){removeStream(uuid:$uuid){uuid removed}}`,
+                        { uuid }
+                      );
+                      toast.info("Stream removed");
+                    } catch (e: unknown) {
+                      const msg =
+                        (
+                          e as {
+                            response?: { errors?: Array<{ message?: string }> };
+                          }
+                        )?.response?.errors?.[0]?.message ??
+                        "Failed to remove stream";
+                      toast.warning(msg);
+                    }
+                  }}
+                >
+                  Remove Stream
+                </Button>
+              </BouncyClick>
             </div>
           ) : null}
 
@@ -183,9 +185,11 @@ export default function StreamReplayPage() {
                   <div className="text-sm text-muted-foreground">
                     This stream has been removed by a moderator.
                     <div className="mt-2">
-                      <Button asChild variant="link" className="px-0">
-                        <Link href="/browse-past">Browse past streams</Link>
-                      </Button>
+                      <BouncyClick>
+                        <Button asChild variant="link" className="px-0">
+                          <Link href="/browse-past">Browse past streams</Link>
+                        </Button>
+                      </BouncyClick>
                     </div>
                   </div>
                 ) : null}
@@ -202,14 +206,18 @@ export default function StreamReplayPage() {
                   <div className="space-y-4">
                     <div className="flex flex-wrap gap-2">
                       {stream.fileUrls.map((_, idx) => (
-                        <Button
-                          key={idx}
-                          variant={idx === activeIndex ? "default" : "outline"}
-                          size="sm"
-                          onClick={() => activateIndex(idx)}
-                        >
-                          Part {idx + 1}
-                        </Button>
+                        <BouncyClick key={idx}>
+                          <Button
+                            key={idx}
+                            variant={
+                              idx === activeIndex ? "default" : "outline"
+                            }
+                            size="sm"
+                            onClick={() => activateIndex(idx)}
+                          >
+                            Part {idx + 1}
+                          </Button>
+                        </BouncyClick>
                       ))}
                     </div>
 
@@ -218,31 +226,35 @@ export default function StreamReplayPage() {
                         key={url}
                         className={idx === activeIndex ? "block" : "hidden"}
                       >
-                        <video
-                          ref={(el) => {
-                            videoRefs.current[idx] = el;
-                          }}
-                          src={url}
-                          controls
-                          playsInline
-                          onTimeUpdate={(e) => {
-                            if (idx !== activeIndex) return;
-                            setCurrentTime(
-                              (e.target as HTMLVideoElement).currentTime
-                            );
-                          }}
-                          className="inset-0 h-full w-full rounded-md object-cover"
-                          onLoadedMetadata={(e) => {
-                            const duration =
-                              (e.target as HTMLVideoElement).duration || 0;
-                            setDurations((prev) => {
-                              const next = prev.slice();
-                              next[idx] = duration;
-                              return next;
-                            });
-                          }}
-                          onPlay={() => activateIndex(idx)}
-                        />
+                        <div className="relative w-full">
+                          <div className="relative overflow-hidden rounded-md border bg-black pb-[54%]">
+                            <video
+                              ref={(el) => {
+                                videoRefs.current[idx] = el;
+                              }}
+                              src={url}
+                              controls
+                              playsInline
+                              onTimeUpdate={(e) => {
+                                if (idx !== activeIndex) return;
+                                setCurrentTime(
+                                  (e.target as HTMLVideoElement).currentTime
+                                );
+                              }}
+                              className="absolute inset-0 h-full w-full object-cover"
+                              onLoadedMetadata={(e) => {
+                                const duration =
+                                  (e.target as HTMLVideoElement).duration || 0;
+                                setDurations((prev) => {
+                                  const next = prev.slice();
+                                  next[idx] = duration;
+                                  return next;
+                                });
+                              }}
+                              onPlay={() => activateIndex(idx)}
+                            />
+                          </div>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -255,11 +267,11 @@ export default function StreamReplayPage() {
             </Card>
 
             <Card className="h-full flex flex-col">
-              <CardContent className="pt-0 pb-6 flex-1 h-0 flex flex-col">
-                <h3 className="text-sm font-semibold mb-2">Chat Replay</h3>
-                <div className="h-full max-h-[75vh] overflow-auto rounded-md border bg-muted/30 p-2">
+              <CardContent className="pt-0  flex-1 h-0 flex flex-col">
+                <h3 className="text-sm font-semibold mb-2">Cope Replay</h3>
+                <div className="h-0 flex-1 max-h-[75vh] overflow-auto rounded-md border bg-muted/30 p-2">
                   {syncedMessages.length === 0 ? (
-                    <div className="p-2 text-sm text-muted-foreground">
+                    <div className="p-4 text-sm text-muted-foreground text-center">
                       No messages yet.
                     </div>
                   ) : (
