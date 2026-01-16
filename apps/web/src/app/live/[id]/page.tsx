@@ -25,6 +25,7 @@ import BouncyClick from "@/components/ui/bouncy-click";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   fade_out,
+  fade_out_right_minor,
   fade_out_scale_1,
   normalize,
   transition_fast,
@@ -1290,85 +1291,82 @@ export default function LiveStreamPage() {
                             </div>
                           ) : (
                             <div className="space-y-2">
-                              {[...new Set(messages.map((m) => m.uuid))].map(
-                                (uuid) => {
-                                  const m = messages.find(
-                                    (m) => m.uuid === uuid
-                                  );
-                                  if (!m) return null;
-                                  return (
-                                    <motion.div
-                                      layout
-                                      initial={{ opacity: 0, x: 50 }}
-                                      animate={{ opacity: 1, x: 0 }}
-                                      exit={{ opacity: 0, x: 50 }}
-                                      transition={{
-                                        duration: 0.4,
-                                        ease: [0.4, 0, 0.2, 1],
-                                        layout: { duration: 0.3 },
-                                      }}
-                                      key={uuid}
-                                      className="group text-sm"
-                                    >
-                                      <span className="font-medium mr-2">
-                                        {m.name || "Anon"}
-                                      </span>
-                                      <span
-                                        className="rounded px-1.5 py-0.5 text-xs"
-                                        style={{
-                                          color: m.anon_text_color,
-                                          backgroundColor:
-                                            m.anon_background_color,
-                                        }}
+                              <AnimatePresence mode="wait">
+                                {[...new Set(messages.map((m) => m.uuid))].map(
+                                  (uuid) => {
+                                    const m = messages.find(
+                                      (m) => m.uuid === uuid
+                                    );
+                                    if (!m) return null;
+                                    return (
+                                      <motion.div
+                                        initial={fade_out_right_minor}
+                                        animate={normalize}
+                                        exit={fade_out_right_minor}
+                                        transition={transition_fast}
+                                        key={uuid}
+                                        className="group text-sm"
                                       >
-                                        {m.anon_id}
-                                      </span>
-                                      {getToken() ? (
-                                        <BouncyClick>
-                                          <Button
-                                            variant="outline"
-                                            size="sm"
-                                            className="ml-2 h-7 px-2 py-0.5 text-xs opacity-0 transition group-hover:opacity-100"
-                                            title="Remove message"
-                                            onClick={async () => {
-                                              try {
-                                                const client = makeGqlClient(
-                                                  getToken() ?? undefined
-                                                );
-                                                await client.request(
-                                                  `mutation($uuid:String!){removeChatMessage(uuid:$uuid){uuid removed}}`,
-                                                  { uuid: m.uuid }
-                                                );
-                                                toast.info("Message removed");
-                                              } catch (e: unknown) {
-                                                const msg =
-                                                  (
-                                                    e as {
-                                                      response?: {
-                                                        errors?: Array<{
-                                                          message?: string;
-                                                        }>;
-                                                      };
-                                                    }
-                                                  )?.response?.errors?.[0]
-                                                    ?.message ??
-                                                  "Failed to remove";
-                                                toast.warning(msg);
-                                              }
-                                            }}
-                                          >
-                                            <Trash2 className="h-3.5 w-3.5" />
-                                            Remove
-                                          </Button>
-                                        </BouncyClick>
-                                      ) : null}
-                                      <div className="mt-0.5 text-zinc-300">
-                                        {m.message}
-                                      </div>
-                                    </motion.div>
-                                  );
-                                }
-                              )}
+                                        <span className="font-medium mr-2">
+                                          {m.name || "Anon"}
+                                        </span>
+                                        <span
+                                          className="rounded px-1.5 py-0.5 text-xs"
+                                          style={{
+                                            color: m.anon_text_color,
+                                            backgroundColor:
+                                              m.anon_background_color,
+                                          }}
+                                        >
+                                          {m.anon_id}
+                                        </span>
+                                        {getToken() ? (
+                                          <BouncyClick>
+                                            <Button
+                                              variant="outline"
+                                              size="sm"
+                                              className="ml-2 h-7 px-2 py-0.5 text-xs opacity-0 transition group-hover:opacity-100"
+                                              title="Remove message"
+                                              onClick={async () => {
+                                                try {
+                                                  const client = makeGqlClient(
+                                                    getToken() ?? undefined
+                                                  );
+                                                  await client.request(
+                                                    `mutation($uuid:String!){removeChatMessage(uuid:$uuid){uuid removed}}`,
+                                                    { uuid: m.uuid }
+                                                  );
+                                                  toast.info("Message removed");
+                                                } catch (e: unknown) {
+                                                  const msg =
+                                                    (
+                                                      e as {
+                                                        response?: {
+                                                          errors?: Array<{
+                                                            message?: string;
+                                                          }>;
+                                                        };
+                                                      }
+                                                    )?.response?.errors?.[0]
+                                                      ?.message ??
+                                                    "Failed to remove";
+                                                  toast.warning(msg);
+                                                }
+                                              }}
+                                            >
+                                              <Trash2 className="h-3.5 w-3.5" />
+                                              Remove
+                                            </Button>
+                                          </BouncyClick>
+                                        ) : null}
+                                        <div className="mt-0.5 text-zinc-300">
+                                          {m.message}
+                                        </div>
+                                      </motion.div>
+                                    );
+                                  }
+                                )}
+                              </AnimatePresence>
                             </div>
                           )}
                         </div>
