@@ -376,7 +376,7 @@ export function HomeStartStreaming() {
         </DialogTrigger>
       </BouncyClick>
 
-      <DialogContent className="sm:max-w-xl space-y-4 max-h-[100vh] overflow-auto">
+      <DialogContent className="sm:max-w-xl space-y-4 max-h-[100vh] overflow-auto pt-15 md:pt-0">
         <DialogHeader>
           <DialogTitle>Start a new stream</DialogTitle>
           <DialogDescription>
@@ -530,7 +530,7 @@ export function HomeStartStreaming() {
             placeholder="What is this stream about?"
           />
         </div>
-        <DialogFooter className="justify-end my-10 md:my-0">
+        <DialogFooter className="justify-end mb-10 md:mb-0">
           <DialogClose asChild>
             <BouncyClick>
               <Button
