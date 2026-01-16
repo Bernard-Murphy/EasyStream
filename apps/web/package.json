@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "WATCHPACK_POLLING=true next dev --webpack",
     "build": "next build --webpack",
-    "start": "next start --p 9595",
+    "start": "next start -p 9595",
     "lint": "eslint"
   },
   "dependencies": {
