@@ -530,7 +530,7 @@ export function HomeStartStreaming() {
             placeholder="What is this stream about?"
           />
         </div>
-        <DialogFooter className="justify-end mb-6 md:mb-0">
+        <DialogFooter className="justify-end mb-10 md:mb-0">
           <DialogClose asChild>
             <BouncyClick>
               <Button
