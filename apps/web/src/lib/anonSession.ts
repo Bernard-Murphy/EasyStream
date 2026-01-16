@@ -5,7 +5,7 @@ export type AnonSession = {
   name?: string;
 };
 
-const KEY = 'easystream:anonSession';
+const KEY = "easystream:anonSession";
 
 function randomRgb(): string {
   const r = Math.floor(Math.random() * 256);
@@ -15,11 +15,11 @@ function randomRgb(): string {
 }
 
 export function getOrCreateAnonSession(): AnonSession {
-  if (typeof window === 'undefined') {
+  if (typeof window === "undefined") {
     return {
-      anon_id: 'anon-server',
-      anon_text_color: '#111827',
-      anon_background_color: '#dbeafe',
+      anon_id: "server",
+      anon_text_color: "#111827",
+      anon_background_color: "#dbeafe",
     };
   }
 
@@ -33,7 +33,7 @@ export function getOrCreateAnonSession(): AnonSession {
   }
 
   const session: AnonSession = {
-    anon_id: `anon-${crypto.randomUUID().slice(0, 8)}`,
+    anon_id: `${crypto.randomUUID().slice(0, 8)}`,
     anon_text_color: randomRgb(),
     anon_background_color: randomRgb(),
   };
@@ -46,5 +46,3 @@ export function setAnonName(name: string) {
   const next = { ...s, name };
   window.localStorage.setItem(KEY, JSON.stringify(next));
 }
-
-

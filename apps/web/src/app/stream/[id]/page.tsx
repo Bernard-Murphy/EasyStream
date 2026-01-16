@@ -18,8 +18,10 @@ import BouncyClick from "@/components/ui/bouncy-click";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   fade_out,
+  fade_out_right_minor,
   fade_out_scale_1,
   normalize,
+  transition,
   transition_fast,
 } from "@/lib/transitions";
 
@@ -92,14 +94,6 @@ export default function StreamReplayPage() {
   }, [uuid]);
 
   const activateIndex = (idx: number) => {
-    // Stop all other players when active changes
-    videoRefs.current.forEach((v, i) => {
-      if (!v) return;
-      if (i !== idx) {
-        v.pause();
-        v.currentTime = 0;
-      }
-    });
     setCurrentTime(0);
     setActiveIndex(idx);
   };
@@ -243,43 +237,49 @@ export default function StreamReplayPage() {
                           ))}
                         </div>
 
-                        {stream.fileUrls.map((url, idx) => (
-                          <div
-                            key={url}
-                            className={idx === activeIndex ? "block" : "hidden"}
-                          >
-                            <div className="relative w-full">
-                              <div className="relative overflow-hidden rounded-md border bg-black pb-[54%]">
-                                <video
-                                  ref={(el) => {
-                                    videoRefs.current[idx] = el;
-                                  }}
-                                  src={url}
-                                  controls
-                                  playsInline
-                                  onTimeUpdate={(e) => {
-                                    if (idx !== activeIndex) return;
-                                    setCurrentTime(
-                                      (e.target as HTMLVideoElement).currentTime
-                                    );
-                                  }}
-                                  className="absolute inset-0 h-full w-full object-cover"
-                                  onLoadedMetadata={(e) => {
-                                    const duration =
-                                      (e.target as HTMLVideoElement).duration ||
-                                      0;
-                                    setDurations((prev) => {
-                                      const next = prev.slice();
-                                      next[idx] = duration;
-                                      return next;
-                                    });
-                                  }}
-                                  onPlay={() => activateIndex(idx)}
-                                />
-                              </div>
-                            </div>
+                        <div className="relative w-full">
+                          <div className="relative overflow-hidden rounded-md border bg-black pb-[54%]">
+                            <video
+                              key={`video-${activeIndex}-${stream.fileUrls[activeIndex]}`}
+                              ref={(el) => {
+                                videoRefs.current[activeIndex] = el;
+                              }}
+                              src={stream.fileUrls[activeIndex]}
+                              controls
+                              playsInline
+                              preload="auto"
+                              onTimeUpdate={(e) => {
+                                setCurrentTime(
+                                  (e.target as HTMLVideoElement).currentTime
+                                );
+                              }}
+                              className="absolute inset-0 h-full w-full object-cover"
+                              onLoadedMetadata={(e) => {
+                                const duration =
+                                  (e.target as HTMLVideoElement).duration || 0;
+                                setDurations((prev) => {
+                                  const next = prev.slice();
+                                  next[activeIndex] = duration;
+                                  return next;
+                                });
+                              }}
+                              onError={(e) => {
+                                console.error("Video error:", e);
+                                const video = e.target as HTMLVideoElement;
+                                if (video.error) {
+                                  console.error(
+                                    "Video error code:",
+                                    video.error.code
+                                  );
+                                  console.error(
+                                    "Video error message:",
+                                    video.error.message
+                                  );
+                                }
+                              }}
+                            />
                           </div>
-                        ))}
+                        </div>
                       </div>
                     )}
                     <hr className="my-4 border-input" />
@@ -292,35 +292,44 @@ export default function StreamReplayPage() {
                 <Card className="h-[50vh] md:h-full flex flex-col ">
                   <CardContent className="pt-0  flex-1 h-0 flex flex-col">
                     <h3 className="text-sm font-semibold mb-2">Cope Replay</h3>
-                    <div className="md:h-0 flex-1 max-h-[75vh] overflow-auto rounded-md border bg-muted/30 p-2">
+                    <div className="md:h-0 flex-1 max-h-[75vh] overflow-y-auto overflow-x-hidden rounded-md border bg-muted/30 p-2">
                       {syncedMessages.length === 0 ? (
                         <div className="p-4 text-sm text-muted-foreground text-center">
                           No messages yet.
                         </div>
                       ) : (
-                        <div className="space-y-2">
-                          {syncedMessages.map((m) => (
-                            <div key={m.uuid} className="group text-sm">
-                              <span className="font-medium">
-                                {m.name || "Anonymous"}
-                              </span>{" "}
-                              <span
-                                className="rounded px-1.5 py-0.5 text-xs"
-                                style={{
-                                  color: m.anon_text_color,
-                                  backgroundColor: m.anon_background_color,
-                                }}
+                        <div className="space-y-2 overflow-x-hidden">
+                          <AnimatePresence mode="wait">
+                            {syncedMessages.map((m) => (
+                              <motion.div
+                                initial={fade_out_right_minor}
+                                animate={normalize}
+                                exit={fade_out_right_minor}
+                                transition={transition_fast}
+                                key={m.uuid}
+                                className="group text-sm"
                               >
-                                {m.anon_id}
-                              </span>
-                              <div className="text-xs text-zinc-500">
-                                {new Date(m.create_date).toLocaleTimeString()}
-                              </div>
-                              <div className="mt-0.5 text-zinc-300">
-                                {m.message}
-                              </div>
-                            </div>
-                          ))}
+                                <span className="font-medium mr-2">
+                                  {m.name || "Anon"}
+                                </span>{" "}
+                                <span
+                                  className="rounded px-1.5 py-0.5 text-xs"
+                                  style={{
+                                    color: m.anon_text_color,
+                                    backgroundColor: m.anon_background_color,
+                                  }}
+                                >
+                                  {m.anon_id}
+                                </span>
+                                <div className="text-xs text-zinc-500">
+                                  {new Date(m.create_date).toLocaleTimeString()}
+                                </div>
+                                <div className="mt-0.5 text-zinc-300">
+                                  {m.message}
+                                </div>
+                              </motion.div>
+                            ))}
+                          </AnimatePresence>
                         </div>
                       )}
                     </div>

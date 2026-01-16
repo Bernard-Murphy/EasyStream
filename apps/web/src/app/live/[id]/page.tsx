@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { makeGqlClient } from "@/lib/graphql";
 import { getOrCreateAnonSession, setAnonName } from "@/lib/anonSession";
@@ -871,6 +871,55 @@ export default function LiveStreamPage() {
     }
   }
 
+  async function handleSendMessage(event?: FormEvent<HTMLFormElement>) {
+    event?.preventDefault();
+    const msg = chatText.trim();
+    if (!msg) return;
+    setChatText("");
+    const anon = getOrCreateAnonSession();
+    const client = makeGqlClient();
+    const res = await client.request<{
+      sendChatMessage: ChatMessage;
+    }>(
+      `
+                          mutation Send(
+                            $streamUuid: String!
+                            $message: String!
+                            $name: String
+                            $anon_id: String
+                            $anon_text_color: String
+                            $anon_background_color: String
+                          ) {
+                            sendChatMessage(
+                              streamUuid: $streamUuid
+                              message: $message
+                              name: $name
+                              anon_id: $anon_id
+                              anon_text_color: $anon_text_color
+                              anon_background_color: $anon_background_color
+                            ) {
+                              uuid
+                              create_date
+                              anon_id
+                              anon_text_color
+                              anon_background_color
+                              name
+                              message
+                            }
+                          }
+                        `,
+      {
+        streamUuid: uuid,
+        message: msg,
+        name: name || undefined,
+        anon_id: anon.anon_id,
+        anon_text_color: anon.anon_text_color,
+        anon_background_color: anon.anon_background_color,
+      }
+    );
+    setMessages((prev) => [...prev, res.sendChatMessage]);
+  }
+
   return (
     <div className="mx-auto w-full px-4 py-8 flex flex-col min-h-[90vh]">
       <AnimatePresence mode="wait" initial={false}>
@@ -1241,136 +1290,104 @@ export default function LiveStreamPage() {
                             </div>
                           ) : (
                             <div className="space-y-2">
-                              {messages
-                                .filter((m) => !m.removed)
-                                .map((m) => (
-                                  <div key={m.uuid} className="group text-sm">
-                                    <span className="font-medium">
-                                      {m.name || "Anonymous"}
-                                    </span>{" "}
-                                    <span
-                                      className="rounded px-1.5 py-0.5 text-xs"
-                                      style={{
-                                        color: m.anon_text_color,
-                                        backgroundColor:
-                                          m.anon_background_color,
+                              {[...new Set(messages.map((m) => m.uuid))].map(
+                                (uuid) => {
+                                  const m = messages.find(
+                                    (m) => m.uuid === uuid
+                                  );
+                                  if (!m) return null;
+                                  return (
+                                    <motion.div
+                                      layout
+                                      initial={{ opacity: 0, x: 50 }}
+                                      animate={{ opacity: 1, x: 0 }}
+                                      exit={{ opacity: 0, x: 50 }}
+                                      transition={{
+                                        duration: 0.4,
+                                        ease: [0.4, 0, 0.2, 1],
+                                        layout: { duration: 0.3 },
                                       }}
+                                      key={uuid}
+                                      className="group text-sm"
                                     >
-                                      {m.anon_id}
-                                    </span>
-                                    {getToken() ? (
-                                      <BouncyClick>
-                                        <Button
-                                          variant="outline"
-                                          size="sm"
-                                          className="ml-2 h-7 px-2 py-0.5 text-xs opacity-0 transition group-hover:opacity-100"
-                                          title="Remove message"
-                                          onClick={async () => {
-                                            try {
-                                              const client = makeGqlClient(
-                                                getToken() ?? undefined
-                                              );
-                                              await client.request(
-                                                `mutation($uuid:String!){removeChatMessage(uuid:$uuid){uuid removed}}`,
-                                                { uuid: m.uuid }
-                                              );
-                                              toast.info("Message removed");
-                                            } catch (e: unknown) {
-                                              const msg =
-                                                (
-                                                  e as {
-                                                    response?: {
-                                                      errors?: Array<{
-                                                        message?: string;
-                                                      }>;
-                                                    };
-                                                  }
-                                                )?.response?.errors?.[0]
-                                                  ?.message ??
-                                                "Failed to remove";
-                                              toast.warning(msg);
-                                            }
-                                          }}
-                                        >
-                                          <Trash2 className="h-3.5 w-3.5" />
-                                          Remove
-                                        </Button>
-                                      </BouncyClick>
-                                    ) : null}
-                                    <div className="mt-0.5 text-zinc-300">
-                                      {m.message}
-                                    </div>
-                                  </div>
-                                ))}
+                                      <span className="font-medium mr-2">
+                                        {m.name || "Anon"}
+                                      </span>
+                                      <span
+                                        className="rounded px-1.5 py-0.5 text-xs"
+                                        style={{
+                                          color: m.anon_text_color,
+                                          backgroundColor:
+                                            m.anon_background_color,
+                                        }}
+                                      >
+                                        {m.anon_id}
+                                      </span>
+                                      {getToken() ? (
+                                        <BouncyClick>
+                                          <Button
+                                            variant="outline"
+                                            size="sm"
+                                            className="ml-2 h-7 px-2 py-0.5 text-xs opacity-0 transition group-hover:opacity-100"
+                                            title="Remove message"
+                                            onClick={async () => {
+                                              try {
+                                                const client = makeGqlClient(
+                                                  getToken() ?? undefined
+                                                );
+                                                await client.request(
+                                                  `mutation($uuid:String!){removeChatMessage(uuid:$uuid){uuid removed}}`,
+                                                  { uuid: m.uuid }
+                                                );
+                                                toast.info("Message removed");
+                                              } catch (e: unknown) {
+                                                const msg =
+                                                  (
+                                                    e as {
+                                                      response?: {
+                                                        errors?: Array<{
+                                                          message?: string;
+                                                        }>;
+                                                      };
+                                                    }
+                                                  )?.response?.errors?.[0]
+                                                    ?.message ??
+                                                  "Failed to remove";
+                                                toast.warning(msg);
+                                              }
+                                            }}
+                                          >
+                                            <Trash2 className="h-3.5 w-3.5" />
+                                            Remove
+                                          </Button>
+                                        </BouncyClick>
+                                      ) : null}
+                                      <div className="mt-0.5 text-zinc-300">
+                                        {m.message}
+                                      </div>
+                                    </motion.div>
+                                  );
+                                }
+                              )}
                             </div>
                           )}
                         </div>
 
-                        <div className="mt-3 flex items-center gap-2">
+                        <form
+                          className="mt-3 flex items-center gap-2"
+                          onSubmit={handleSendMessage}
+                        >
                           <Input
                             placeholder="Write a message…"
                             value={chatText}
                             onChange={(e) => setChatText(e.target.value)}
                           />
                           <BouncyClick>
-                            <Button
-                              onClick={async () => {
-                                const msg = chatText.trim();
-                                if (!msg) return;
-                                setChatText("");
-                                const anon = getOrCreateAnonSession();
-                                const client = makeGqlClient();
-                                const res = await client.request<{
-                                  sendChatMessage: ChatMessage;
-                                }>(
-                                  `
-                          mutation Send(
-                            $streamUuid: String!
-                            $message: String!
-                            $name: String
-                            $anon_id: String
-                            $anon_text_color: String
-                            $anon_background_color: String
-                          ) {
-                            sendChatMessage(
-                              streamUuid: $streamUuid
-                              message: $message
-                              name: $name
-                              anon_id: $anon_id
-                              anon_text_color: $anon_text_color
-                              anon_background_color: $anon_background_color
-                            ) {
-                              uuid
-                              create_date
-                              anon_id
-                              anon_text_color
-                              anon_background_color
-                              name
-                              message
-                            }
-                          }
-                        `,
-                                  {
-                                    streamUuid: uuid,
-                                    message: msg,
-                                    name: name || undefined,
-                                    anon_id: anon.anon_id,
-                                    anon_text_color: anon.anon_text_color,
-                                    anon_background_color:
-                                      anon.anon_background_color,
-                                  }
-                                );
-                                setMessages((prev) => [
-                                  ...prev,
-                                  res.sendChatMessage,
-                                ]);
-                              }}
-                              className="w-full"
-                            >
+                            <Button type="submit" className="w-full">
                               <SendHorizonal className="h-4 w-4" />
                             </Button>
                           </BouncyClick>
-                        </div>
+                        </form>
                       </CardContent>
                     </Card>
                   </motion.div>

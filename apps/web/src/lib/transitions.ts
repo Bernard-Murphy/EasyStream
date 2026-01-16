@@ -68,12 +68,14 @@ export const bob_right = {
 
 export const fade_out_left_minor = {
   opacity: 0,
-  x: -300,
+  x: -30,
+  scale: 0.9,
 };
 
 export const fade_out_right_minor = {
   opacity: 0,
-  x: 300,
+  x: 30,
+  scale: 0.9,
 };
 
 export const retract = {

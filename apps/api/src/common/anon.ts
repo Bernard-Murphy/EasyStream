@@ -23,10 +23,8 @@ function pick<T>(arr: T[]): T {
 export function createAnonSession() {
   const uuid = randomUUID().slice(0, 8);
   return {
-    anon_id: `anon-${uuid}`,
+    anon_id: `${uuid}`,
     anon_text_color: pick(TEXT_COLORS),
     anon_background_color: pick(BG_COLORS),
   };
 }
-
-
