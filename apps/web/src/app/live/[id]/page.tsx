@@ -1297,7 +1297,7 @@ export default function LiveStreamPage() {
                                         </Button>
                                       </BouncyClick>
                                     ) : null}
-                                    <div className="mt-0.5 text-zinc-800">
+                                    <div className="mt-0.5 text-zinc-300">
                                       {m.message}
                                     </div>
                                   </div>

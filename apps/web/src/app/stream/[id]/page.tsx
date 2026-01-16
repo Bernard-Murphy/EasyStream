@@ -313,10 +313,10 @@ export default function StreamReplayPage() {
                               >
                                 {m.anon_id}
                               </span>
-                              <div className="text-xs text-slate-500">
+                              <div className="text-xs text-zinc-500">
                                 {new Date(m.create_date).toLocaleTimeString()}
                               </div>
-                              <div className="mt-0.5 text-slate-800">
+                              <div className="mt-0.5 text-zinc-300">
                                 {m.message}
                               </div>
                             </div>
