@@ -5,12 +5,14 @@ export async function uploadBlob(params: {
   file: Blob;
   filename: string;
   contentType?: string;
+  hostToken?: string | null;
 }): Promise<{ url: string; key: string }> {
   const form = new FormData();
   form.append('file', params.file, params.filename);
 
   const res = await fetch(params.url, {
     method: 'POST',
+    headers: params.hostToken ? { 'x-host-token': params.hostToken } : undefined,
     body: form,
   });
   if (!res.ok) {
@@ -21,11 +23,17 @@ export async function uploadBlob(params: {
 }
 
 export function clipUploadUrl(streamUuid: string) {
-  return `${CONFIG.restUrl}/upload/clip?streamUuid=${encodeURIComponent(streamUuid)}`;
+  const qs = new URLSearchParams({
+    streamUuid,
+  });
+  return `${CONFIG.restUrl}/upload/clip?${qs.toString()}`;
 }
 
 export function thumbnailUploadUrl(streamUuid: string) {
-  return `${CONFIG.restUrl}/upload/thumbnail?streamUuid=${encodeURIComponent(streamUuid)}`;
+  const qs = new URLSearchParams({
+    streamUuid,
+  });
+  return `${CONFIG.restUrl}/upload/thumbnail?${qs.toString()}`;
 }
 
 

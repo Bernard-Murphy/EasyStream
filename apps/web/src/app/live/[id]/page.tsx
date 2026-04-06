@@ -705,6 +705,7 @@ export default function LiveStreamPage() {
           file: blob,
           filename: `clip-final-${Date.now()}.webm`,
           contentType: "video/webm",
+          hostToken,
         });
       });
     }
@@ -766,6 +767,7 @@ export default function LiveStreamPage() {
               file: blob,
               filename: `clip-${Date.now()}.webm`,
               contentType: "video/webm",
+              hostToken,
             });
           });
         }
@@ -855,6 +857,7 @@ export default function LiveStreamPage() {
                 file: blob,
                 filename: `clip-${Date.now()}.webm`,
                 contentType: "video/webm",
+                hostToken,
               });
             });
           }

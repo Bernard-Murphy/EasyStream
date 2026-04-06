@@ -341,6 +341,7 @@ export function HomeStartStreaming() {
               file: blob,
               filename: "thumbnail.jpg",
               contentType: "image/jpeg",
+              hostToken,
             });
 
             await client.request(
